@@ -23,6 +23,9 @@ Controls:
 - Mouse wheel: change both map scale and the spherical visibility cutoff. The
   grid adapts through 1, 5, 10, 50, and 100 ly intervals.
 - Hold `Space` and drag: move the view center along the X/Y reference plane.
+- Hold `W`, `A`, `S`, or `D`: continuously move the view center along that
+  plane, relative to the current camera direction. `Q` moves below the plane
+  and `E` moves above it.
 - Hover within 14 pixels of a star: change the pointer to a targeting reticle.
 - Click within 14 pixels of a star: show its name, spectral type, distance, and
   Cartesian position in the upper-left panel.
@@ -34,6 +37,18 @@ Controls:
   dwarfs; and uncategorized objects. All layers start enabled.
 - `R`: restore Sol, the 15 ly range, and the initial rotation.
 - `F`: enter or leave fullscreen mode.
+
+The gear menu controls display emphasis without changing catalog data:
+
+- **Grid:** off, the original light grid, or a prominent neon-blue grid.
+- **Grid normals:** off, light, or prominent spectral-color height lines.
+- **Star size:** normal, large, or accurate. Accurate uses a compressed
+  logarithmic visual-luminosity scale derived from apparent magnitude and
+  distance; stars without the required photometry use a neutral fallback size.
+- **Sol indicator:** when enabled, a selected star gets a gold direction line
+  toward Sol with its Sun distance labelled in light-years.
+- **Cropping sphere:** show or hide the wireframe visibility boundary without
+  changing the active spherical star cutoff.
 
 The circular **i** beside the selected object's spectral type opens a compact,
 offline description of that stellar family. These summaries are locally stored

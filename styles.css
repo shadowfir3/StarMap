@@ -262,6 +262,44 @@ dd { margin: 0; color: #cde2ef; text-align: right; }
 .swatch.white { color: #fff; } .swatch.violet { color: #c69bff; } .swatch.dark { color: #627080; box-shadow: 0 0 0 1px #8091a0; background: #05080b; }
 .swatch.orange { color: #ff9a55; } .swatch.brown { color: #b66d48; } .swatch.gray { color: #8095a3; }
 
+#settings-panel { width: 300px; }
+#settings-panel fieldset {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border: 0;
+  border-top: 1px solid rgba(124, 188, 217, .1);
+}
+#settings-panel legend { padding: 0 8px 0 0; color: #607b8e; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+#settings-panel label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  padding: 3px 5px;
+  color: #9db6c4;
+  border: 1px solid rgba(118, 178, 207, .08);
+  cursor: pointer;
+  font-size: 9px;
+}
+#settings-panel label:has(input:checked) { color: #d9f3ff; border-color: rgba(109,217,255,.34); background: rgba(71,153,188,.09); }
+#settings-panel input { width: 11px; height: 11px; margin: 0; accent-color: #67ceef; }
+#settings-panel fieldset:last-child { grid-template-columns: 1fr; }
+#settings-panel fieldset:has(input[type="checkbox"]) { grid-template-columns: 1fr; }
+
+.sol-distance-label {
+  position: absolute;
+  color: #f0b94f;
+  font: 9px ui-monospace, Consolas, monospace;
+  letter-spacing: .04em;
+  text-shadow: 0 1px 5px #000, 0 0 8px rgba(238,171,49,.35);
+  white-space: nowrap;
+  transform: translate(7px,-12px);
+}
+.sol-distance-label::before { content: ""; display: inline-block; width: 8px; margin-right: 5px; border-top: 1px solid rgba(240,185,79,.65); vertical-align: middle; }
+
 #scale-panel {
   position: absolute;
   z-index: 20;

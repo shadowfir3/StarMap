@@ -25,6 +25,7 @@
     searchButton: document.querySelector("#search-button"), searchPanel: document.querySelector("#search-panel"),
     searchInput: document.querySelector("#star-search"), searchResults: document.querySelector("#search-results"),
     layersButton: document.querySelector("#layers-button"), layersPanel: document.querySelector("#layers-panel"),
+    settingsButton: document.querySelector("#settings-button"), settingsPanel: document.querySelector("#settings-panel"),
     identity: document.querySelector("#identity"), typeInfoButton: document.querySelector("#type-info-button"),
     typeInfoPopup: document.querySelector("#type-info-popup"), typeInfoClose: document.querySelector("#type-info-close"),
     typeInfoTitle: document.querySelector("#type-info-title"), typeInfoCode: document.querySelector("#type-info-code"),
@@ -52,6 +53,10 @@
   let searchMatches = [];
   let activeSearchIndex = -1;
   let currentTypeContext = { category:"yellow_dwarf", code:"G2V" };
+  const displaySettings = { grid:"light", normals:"light", starSize:"normal", solIndicator:true, cropSphere:true };
+  const movementKeys = new Set();
+  let movementFrame = 0;
+  let lastMovementTime = 0;
   const layerCheckboxes = [...document.querySelectorAll("#layers-panel input[data-category]")];
   const enabledCategories = new Set(layerCheckboxes.map(input => input.dataset.category));
 
@@ -162,9 +167,27 @@
     return 100;
   }
 
-  function starSize(star) {
+  function normalStarSize(star) {
     const magnitude = Number(star.magnitude);
     return Math.max(3.1, Math.min(10, 7.2 - (Number.isFinite(magnitude) ? magnitude * .48 : 2)));
+  }
+
+  function starSize(star) {
+    const normal = normalStarSize(star);
+    if (displaySettings.starSize === "large") return normal * 1.75;
+    if (displaySettings.starSize !== "accurate") return normal;
+    const magnitude = star.magnitude === "" ? NaN : Number(star.magnitude);
+    const distancePc = Number(star.distanceLy) / 3.261563777;
+    if (!Number.isFinite(magnitude) || !Number.isFinite(distancePc) || distancePc <= 0) return 3.2;
+    const absoluteMagnitude = magnitude - 5 * Math.log10(distancePc / 10);
+    const logVisualLuminosity = (4.83 - absoluteMagnitude) / 2.5;
+    return Math.max(2.5,Math.min(28,6 + logVisualLuminosity * 2.3));
+  }
+
+  function solPointSize() {
+    if (displaySettings.starSize === "large") return 18;
+    if (displaySettings.starSize === "accurate") return 6;
+    return 12;
   }
 
   function bindAttribute(buffer, location, values, size) {
@@ -189,13 +212,14 @@
 
   function buildGrid() {
     const positions = [], colors = [];
+    if (displaySettings.grid === "off") return { positions, colors };
     const step = gridStep();
     const extent = Math.ceil(radius / step + 1) * step;
     const minX = Math.floor((target[0] - extent) / step) * step;
     const maxX = Math.ceil((target[0] + extent) / step) * step;
     const minY = Math.floor((target[1] - extent) / step) * step;
     const maxY = Math.ceil((target[1] + extent) / step) * step;
-    const grid = [0.22, 0.55, 0.68, 0.12];
+    const grid = displaySettings.grid === "prominent" ? [0.05,0.72,1,0.62] : [0.22,0.55,0.68,0.12];
     for (let x = minX; x <= maxX; x += step) line([x,minY,0],[x,maxY,0],grid,positions,colors);
     for (let y = minY; y <= maxY; y += step) line([minX,y,0],[maxX,y,0],grid,positions,colors);
     return { positions, colors };
@@ -203,6 +227,7 @@
 
   function buildSphere() {
     const positions = [], colors = [], segments = 96;
+    if (!displaySettings.cropSphere) return { positions, colors };
     const color = [0.22, 0.64, 0.82, 0.13];
     for (let ring = 0; ring < 3; ring++) for (let i = 0; i < segments; i++) {
       const a = i / segments * Math.PI * 2, b = (i + 1) / segments * Math.PI * 2;
@@ -236,6 +261,21 @@
       label.textContent = star.name;
       label.style.left = `${screen.x}px`; label.style.top = `${screen.y}px`;
       ui.labels.append(label);
+    }
+    if (displaySettings.solIndicator && selected) {
+      const distance = Number(selected.distanceLy) || Math.hypot(selected.x,selected.y,selected.z);
+      if (distance > 0) {
+        const fractionTowardSol = Math.min(.5,(radius * .48) / distance);
+        const labelPoint = [selected.x*(1-fractionTowardSol),selected.y*(1-fractionTowardSol),selected.z*(1-fractionTowardSol)];
+        const screen = project(labelPoint);
+        if (screen?.visible && screen.x >= 0 && screen.y >= 0 && screen.x <= canvas.clientWidth && screen.y <= canvas.clientHeight) {
+          const label = document.createElement("span");
+          label.className = "sol-distance-label";
+          label.textContent = `${distance.toLocaleString(undefined,{maximumFractionDigits:2})} ly to Sol`;
+          label.style.left = `${screen.x}px`; label.style.top = `${screen.y}px`;
+          ui.labels.append(label);
+        }
+      }
     }
   }
 
@@ -273,15 +313,24 @@
     visibleStars = stars.filter(star => enabledCategories.has(star.category || "other")
       && Math.hypot(star.x-target[0], star.y-target[1], star.z-target[2]) <= radius);
     const verticalPositions = [], verticalColors = [];
-    for (const star of visibleStars) {
-      const color = spectralColor(star.spectralType);
-      if (Math.abs(star.z) > radius * .002) line([star.x,star.y,0],[star.x,star.y,star.z],[...color,.38],verticalPositions,verticalColors);
+    if (displaySettings.normals !== "off") {
+      const normalAlpha = displaySettings.normals === "prominent" ? .88 : .38;
+      for (const star of visibleStars) {
+        const color = spectralColor(star.spectralType);
+        if (Math.abs(star.z) > radius * .002) line([star.x,star.y,0],[star.x,star.y,star.z],[...color,normalAlpha],verticalPositions,verticalColors);
+      }
     }
     gl.disable(gl.DEPTH_TEST);
     drawGeometry(gl.LINES, verticalPositions, verticalColors);
+
+    if (displaySettings.solIndicator && selected) {
+      const solLinePositions = [], solLineColors = [];
+      line([selected.x,selected.y,selected.z],[0,0,0],[1,.68,.16,.76],solLinePositions,solLineColors);
+      drawGeometry(gl.LINES,solLinePositions,solLineColors);
+    }
     gl.enable(gl.DEPTH_TEST);
 
-    const positions = [0,0,0], colors = [1,.84,.35,1], sizes = [12];
+    const positions = [0,0,0], colors = [1,.84,.35,1], sizes = [solPointSize()];
     for (const star of visibleStars) {
       positions.push(star.x,star.y,star.z);
       const color = spectralColor(star.spectralType);
@@ -416,8 +465,31 @@
     if (document.fullscreenElement) await document.exitFullscreen(); else await viewport.requestFullscreen();
   }
 
+  function movementTick(timestamp) {
+    if (!movementKeys.size) { movementFrame=0; lastMovementTime=0; return; }
+    const dt = lastMovementTime ? Math.min(.05,(timestamp-lastMovementTime)/1000) : 0;
+    lastMovementTime=timestamp;
+    let forward = (movementKeys.has("KeyW") ? 1 : 0) - (movementKeys.has("KeyS") ? 1 : 0);
+    let sideways = (movementKeys.has("KeyD") ? 1 : 0) - (movementKeys.has("KeyA") ? 1 : 0);
+    let vertical = (movementKeys.has("KeyE") ? 1 : 0) - (movementKeys.has("KeyQ") ? 1 : 0);
+    const length = Math.hypot(forward,sideways,vertical) || 1;
+    forward/=length; sideways/=length; vertical/=length;
+    const forwardPlane = [-Math.cos(yaw),-Math.sin(yaw)];
+    const rightPlane = [-Math.sin(yaw),Math.cos(yaw)];
+    const speed = Math.max(.8,radius*.9);
+    target[0]+=(forward*forwardPlane[0]+sideways*rightPlane[0])*speed*dt;
+    target[1]+=(forward*forwardPlane[1]+sideways*rightPlane[1])*speed*dt;
+    target[2]+=vertical*speed*dt;
+    requestRender();
+    movementFrame=requestAnimationFrame(movementTick);
+  }
+
+  function startMovement() {
+    if (!movementFrame) movementFrame=requestAnimationFrame(movementTick);
+  }
+
   function closeToolPanels(except = null) {
-    for (const [button, panel] of [[ui.searchButton,ui.searchPanel],[ui.layersButton,ui.layersPanel]]) {
+    for (const [button, panel] of [[ui.searchButton,ui.searchPanel],[ui.layersButton,ui.layersPanel],[ui.settingsButton,ui.settingsPanel]]) {
       if (panel === except) continue;
       panel.hidden = true;
       button.setAttribute("aria-expanded", "false");
@@ -497,6 +569,7 @@
     }
   });
   ui.layersButton.addEventListener("click", () => toggleToolPanel(ui.layersButton,ui.layersPanel));
+  ui.settingsButton.addEventListener("click", () => toggleToolPanel(ui.settingsButton,ui.settingsPanel));
   ui.searchInput.addEventListener("input", renderSearchResults);
   ui.searchInput.addEventListener("keydown", event => {
     if (event.key === "ArrowDown") { event.preventDefault(); updateSearchActive(1); }
@@ -511,6 +584,21 @@
   document.querySelector("#layers-all").addEventListener("click", () => {
     layerCheckboxes.forEach(input => { input.checked=true; enabledCategories.add(input.dataset.category); });
     requestRender();
+  });
+  document.querySelectorAll('input[name="grid-strength"]').forEach(input => input.addEventListener("change", () => {
+    if (input.checked) { displaySettings.grid=input.value; requestRender(); }
+  }));
+  document.querySelectorAll('input[name="normal-strength"]').forEach(input => input.addEventListener("change", () => {
+    if (input.checked) { displaySettings.normals=input.value; requestRender(); }
+  }));
+  document.querySelectorAll('input[name="star-size"]').forEach(input => input.addEventListener("change", () => {
+    if (input.checked) { displaySettings.starSize=input.value; requestRender(); }
+  }));
+  document.querySelector("#sol-indicator-setting").addEventListener("change", event => {
+    displaySettings.solIndicator=event.target.checked; requestRender();
+  });
+  document.querySelector("#crop-sphere-setting").addEventListener("change", event => {
+    displaySettings.cropSphere=event.target.checked; requestRender();
   });
   document.addEventListener("pointerdown", event => {
     if (!event.target.closest(".tool-control")) closeToolPanels();
@@ -565,13 +653,19 @@
   }, { passive:false });
   window.addEventListener("keydown", event => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    if (["KeyW","KeyA","KeyS","KeyD","KeyQ","KeyE"].includes(event.code)) {
+      event.preventDefault(); movementKeys.add(event.code); startMovement();
+    }
     if (event.code === "Space") { spaceHeld=true; event.preventDefault(); }
     if (event.key.toLowerCase() === "r") reset();
     if (event.key.toLowerCase() === "f") { event.preventDefault(); toggleFullscreen().catch(() => {}); }
     if (event.key === "Escape") closeTypeInfo();
   });
-  window.addEventListener("keyup", event => { if (event.code === "Space") spaceHeld=false; });
-  window.addEventListener("blur", () => { spaceHeld=false; });
+  window.addEventListener("keyup", event => {
+    if (event.code === "Space") spaceHeld=false;
+    movementKeys.delete(event.code);
+  });
+  window.addEventListener("blur", () => { spaceHeld=false; movementKeys.clear(); });
   window.addEventListener("resize", () => {
     requestRender();
     if (!ui.typeInfoPopup.hidden) positionTypeInfoPopup();

@@ -78,6 +78,42 @@
           </fieldset>
         </section>
       </div>
+
+      <div id="settings-control" class="tool-control">
+        <button id="settings-button" class="tool-button" type="button" aria-expanded="false" aria-controls="settings-panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"></path><circle cx="12" cy="12" r="7"></circle></svg>
+          <span>Settings</span>
+        </button>
+        <section id="settings-panel" class="tool-panel glass" hidden>
+          <div class="panel-heading"><span>Display settings</span></div>
+          <fieldset>
+            <legend>Grid</legend>
+            <label><input type="radio" name="grid-strength" value="off"><span>Off</span></label>
+            <label><input type="radio" name="grid-strength" value="light" checked><span>Light</span></label>
+            <label><input type="radio" name="grid-strength" value="prominent"><span>Prominent</span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Grid normals</legend>
+            <label><input type="radio" name="normal-strength" value="off"><span>Off</span></label>
+            <label><input type="radio" name="normal-strength" value="light" checked><span>Light</span></label>
+            <label><input type="radio" name="normal-strength" value="prominent"><span>Prominent</span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Star size</legend>
+            <label><input type="radio" name="star-size" value="normal" checked><span>Normal</span></label>
+            <label><input type="radio" name="star-size" value="large"><span>Large</span></label>
+            <label title="Logarithmic visual-luminosity scale"><input type="radio" name="star-size" value="accurate"><span>Accurate</span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Sol indicator</legend>
+            <label><input id="sol-indicator-setting" type="checkbox" checked><span>Show direction and distance</span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Cropping sphere</legend>
+            <label><input id="crop-sphere-setting" type="checkbox" checked><span>Show visibility boundary</span></label>
+          </fieldset>
+        </section>
+      </div>
     </div>
 
     <div id="labels" aria-hidden="true"></div>
@@ -101,6 +137,8 @@
       <div class="control"><i class="mouse drag"></i><span>Drag to rotate</span></div>
       <div class="control"><i class="mouse wheel"></i><span>Wheel to scale</span></div>
       <div class="control"><kbd>Space</kbd><span>+ drag to pan</span></div>
+      <div class="control"><kbd>WASD</kbd><span>move on plane</span></div>
+      <div class="control"><kbd>Q E</kbd><span>move down / up</span></div>
       <span class="divider"></span>
       <span>Click for details · double-click to center</span>
     </footer>
