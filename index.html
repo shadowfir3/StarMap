@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#03070d">
+  <title>Solar Neighborhood · Star Map</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="viewport" aria-label="Interactive three-dimensional star map">
+    <canvas id="star-map" aria-label="WebGL star map centered on Sol"></canvas>
+
+    <section id="identity" class="glass" aria-live="polite">
+      <p class="eyebrow">Selected object</p>
+      <h1 id="star-name">Sol</h1>
+      <dl>
+        <div><dt>Type</dt><dd class="type-value"><span id="star-type">G2V · Yellow dwarf</span><button id="type-info-button" type="button" aria-label="About this star type" aria-expanded="false">i</button></dd></div>
+        <div><dt>Distance</dt><dd id="star-distance">0.000 ly</dd></div>
+        <div><dt>Position</dt><dd id="star-position">Origin</dd></div>
+      </dl>
+      <p id="star-source">Reference frame origin</p>
+    </section>
+
+    <section id="type-info-popup" class="glass" role="dialog" aria-labelledby="type-info-title" hidden>
+      <button id="type-info-close" type="button" aria-label="Close star type information">×</button>
+      <p class="eyebrow">Stellar type</p>
+      <h3 id="type-info-title">G-type main-sequence star</h3>
+      <p id="type-info-code">Catalog code · G2V</p>
+      <p id="type-info-summary"></p>
+      <ul id="type-info-facts"></ul>
+      <div id="type-info-sources"></div>
+    </section>
+
+    <header id="title-block">
+      <p class="eyebrow">ICRS · SUN-CENTERED</p>
+      <h2>SOLAR<br>NEIGHBORHOOD</h2>
+      <p id="catalog-summary">Loading catalog…</p>
+    </header>
+
+    <div id="tools">
+      <div id="search-control" class="tool-control">
+        <button id="search-button" class="tool-button" type="button" aria-expanded="false" aria-controls="search-panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
+          <span>Search</span>
+        </button>
+        <section id="search-panel" class="tool-panel glass" hidden>
+          <label for="star-search">Find a positioned star</label>
+          <input id="star-search" type="search" autocomplete="off" spellcheck="false" placeholder="Start typing a name…" aria-controls="search-results" aria-autocomplete="list">
+          <div id="search-results" role="listbox"></div>
+        </section>
+      </div>
+
+      <div id="layers-control" class="tool-control">
+        <button id="layers-button" class="tool-button" type="button" aria-expanded="false" aria-controls="layers-panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3-9 5 9 5 9-5-9-5Z"></path><path d="m3 12 9 5 9-5M3 16l9 5 9-5"></path></svg>
+          <span>Layers</span>
+        </button>
+        <section id="layers-panel" class="tool-panel glass" hidden>
+          <div class="panel-heading"><span>Stellar layers</span><button id="layers-all" type="button">All</button></div>
+          <fieldset>
+            <legend>Main-sequence stars</legend>
+            <label><input type="checkbox" data-category="red_dwarf" checked><i class="swatch red"></i><span>Red dwarfs</span><b data-count="red_dwarf">0</b></label>
+            <label><input type="checkbox" data-category="yellow_dwarf" checked><i class="swatch yellow"></i><span>Yellow dwarfs</span><b data-count="yellow_dwarf">0</b></label>
+            <label><input type="checkbox" data-category="other_main_sequence" checked><i class="swatch blue"></i><span>Other main-sequence</span><b data-count="other_main_sequence">0</b></label>
+          </fieldset>
+          <fieldset>
+            <legend>Stellar remnants</legend>
+            <label><input type="checkbox" data-category="white_dwarf" checked><i class="swatch white"></i><span>White dwarfs</span><b data-count="white_dwarf">0</b></label>
+            <label><input type="checkbox" data-category="neutron_star" checked><i class="swatch violet"></i><span>Neutron stars / pulsars</span><b data-count="neutron_star">0</b></label>
+            <label><input type="checkbox" data-category="black_hole" checked><i class="swatch dark"></i><span>Black holes</span><b data-count="black_hole">0</b></label>
+          </fieldset>
+          <fieldset>
+            <legend>Other stages</legend>
+            <label><input type="checkbox" data-category="giant_or_supergiant" checked><i class="swatch orange"></i><span>Giants &amp; supergiants</span><b data-count="giant_or_supergiant">0</b></label>
+            <label><input type="checkbox" data-category="brown_dwarf" checked><i class="swatch brown"></i><span>Brown dwarfs</span><b data-count="brown_dwarf">0</b></label>
+            <label><input type="checkbox" data-category="other" checked><i class="swatch gray"></i><span>Other / unknown</span><b data-count="other">0</b></label>
+          </fieldset>
+        </section>
+      </div>
+    </div>
+
+    <div id="labels" aria-hidden="true"></div>
+
+    <aside id="scale-panel" class="glass">
+      <div class="scale-row">
+        <span>Visibility sphere</span>
+        <strong id="range-value">15.0 ly</strong>
+      </div>
+      <div class="scale-track"><span id="scale-fill"></span></div>
+      <div class="scale-row muted"><span>Grid interval</span><span id="grid-value">10 light-years</span></div>
+      <div class="scale-row muted"><span>Visible stars</span><span id="visible-count">0</span></div>
+    </aside>
+
+    <nav id="actions" aria-label="Map actions">
+      <button id="reset-button" type="button" title="Reset view (R)">Reset <kbd>R</kbd></button>
+      <button id="fullscreen-button" type="button" title="Toggle fullscreen (F)">Fullscreen <kbd>F</kbd></button>
+    </nav>
+
+    <footer>
+      <div class="control"><i class="mouse drag"></i><span>Drag to rotate</span></div>
+      <div class="control"><i class="mouse wheel"></i><span>Wheel to scale</span></div>
+      <div class="control"><kbd>Space</kbd><span>+ drag to pan</span></div>
+      <span class="divider"></span>
+      <span>Click for details · double-click to center</span>
+    </footer>
+    <div id="error-message" hidden></div>
+  </main>
+
+  <script src="data/stars.js"></script>
+  <script src="data/star-types.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

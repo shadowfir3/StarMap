@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "generatedUtc": "2026-07-11T15:41:28Z",
+  "selectionRule": {
+    "officialIauNames": true,
+    "brightVLessThan": 4.0,
+    "nearbyWithinLy": 50.0,
+    "allSimbadNamedStars": true,
+    "curated": [
+      "Antares",
+      "Arcturus",
+      "Barnard's Star",
+      "Bellatrix",
+      "Betelgeuse",
+      "Castor",
+      "Deneb",
+      "Eta Carinae",
+      "Polaris",
+      "Pollux",
+      "Proxima Centauri",
+      "R136a1",
+      "Sirius",
+      "Stephenson 2-18",
+      "TRAPPIST-1",
+      "UY Scuti",
+      "Vega"
+    ]
+  },
+  "rowSemantics": "One SIMBAD object per resolved row; resolved components remain separate. Unresolved WGSN and literature-only exceptions are explicitly flagged.",
+  "coordinateFrame": "Sun-centered ICRS equatorial Cartesian; X=RA0/Dec0, Y=RA90/Dec0, Z=Dec+90.",
+  "distanceRule": "Positive parallax with SNR >= 10; Gaia also requires RUWE <= 1.4 and non-duplicated source.",
+  "sources": {
+    "wgsn": "https://exopla.net/star-names/modern-iau-star-names/",
+    "brightStarCatalog": "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync",
+    "simbadTap": "https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
+    "gaiaTap": "https://gea.esac.esa.int/tap-server/tap/sync"
+  },
+  "wgsnCandidateCount": 595,
+  "brightCandidateCount": 513,
+  "simbadNamedCandidateCount": 2522,
+  "catalogRowCount": 4212,
+  "renderableRowCount": 2904
+}
