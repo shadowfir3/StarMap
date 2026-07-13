@@ -13,6 +13,7 @@
     fameScore:1000, isSol:true,
   });
   const PICK_RADIUS_PX = 14;
+  const NAVIGATION_DURATION_MS = 440;
   const DEFAULT = Object.freeze({ radius: 15, yaw: Math.PI / 4, pitch: Math.atan(1 / Math.sqrt(2)), target: [0, 0, 0] });
 
   const ui = {
@@ -57,6 +58,7 @@
   const movementKeys = new Set();
   let movementFrame = 0;
   let lastMovementTime = 0;
+  let navigationFrame = 0;
   const layerCheckboxes = [...document.querySelectorAll("#layers-panel input[data-category]")];
   const enabledCategories = new Set(layerCheckboxes.map(input => input.dataset.category));
 
@@ -441,23 +443,70 @@
     canvas.classList.toggle("targetable", Boolean(hit));
   }
 
+  function cancelNavigationAnimation() {
+    if (!navigationFrame) return;
+    cancelAnimationFrame(navigationFrame);
+    navigationFrame = 0;
+  }
+
+  function animateViewTo(destinationTarget, destinationRadius) {
+    cancelNavigationAnimation();
+    const startTarget = [...target];
+    const startRadius = radius;
+    const distance = Math.hypot(
+      destinationTarget[0]-startTarget[0],
+      destinationTarget[1]-startTarget[1],
+      destinationTarget[2]-startTarget[2],
+    );
+    const zoomDistance = Math.abs(Math.log(destinationRadius/startRadius));
+
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || (distance < 1e-6 && zoomDistance < 1e-6)) {
+      target = [...destinationTarget];
+      radius = destinationRadius;
+      requestRender();
+      return;
+    }
+
+    const duration = Math.min(680, NAVIGATION_DURATION_MS + Math.log10(1+distance)*42 + Math.min(70,zoomDistance*45));
+    const startTime = performance.now();
+    const startLogRadius = Math.log(startRadius);
+    const destinationLogRadius = Math.log(destinationRadius);
+
+    function step(now) {
+      const progress = Math.min(1,(now-startTime)/duration);
+      const eased = 1-Math.pow(1-progress,3);
+      target = startTarget.map((value,index) => value+(destinationTarget[index]-value)*eased);
+      radius = Math.exp(startLogRadius+(destinationLogRadius-startLogRadius)*eased);
+      requestRender();
+      if (progress < 1) {
+        navigationFrame = requestAnimationFrame(step);
+      } else {
+        navigationFrame = 0;
+        target = [...destinationTarget];
+        radius = destinationRadius;
+        requestRender();
+      }
+    }
+
+    navigationFrame = requestAnimationFrame(step);
+  }
+
   function centerOnStar(star, zoomIn = false) {
-    if (!star) {
-      target = [0,0,0];
-    } else {
-      target = [star.x,star.y,star.z];
+    let destinationTarget = [0,0,0];
+    if (star) {
+      destinationTarget = [star.x,star.y,star.z];
       if (!enabledCategories.has(star.category || "other")) {
         enabledCategories.add(star.category || "other");
         const checkbox = layerCheckboxes.find(input => input.dataset.category === (star.category || "other"));
         if (checkbox) checkbox.checked = true;
       }
     }
-    if (zoomIn) radius = Math.min(radius, 5);
     selectStar(star);
-    requestRender();
+    animateViewTo(destinationTarget,zoomIn ? Math.min(radius,5) : radius);
   }
 
   function reset() {
+    cancelNavigationAnimation();
     radius = DEFAULT.radius; yaw = DEFAULT.yaw; pitch = DEFAULT.pitch; target = [...DEFAULT.target]; selectStar(null); requestRender();
   }
 
@@ -485,6 +534,7 @@
   }
 
   function startMovement() {
+    cancelNavigationAnimation();
     if (!movementFrame) movementFrame=requestAnimationFrame(movementTick);
   }
 
@@ -610,6 +660,7 @@
   ui.typeInfoClose.addEventListener("click", closeTypeInfo);
 
   canvas.addEventListener("pointerdown", event => {
+    cancelNavigationAnimation();
     canvas.setPointerCapture(event.pointerId);
     pointer = { id:event.pointerId, x:event.clientX, y:event.clientY, startX:event.clientX, startY:event.clientY, moved:false, pan:spaceHeld };
     canvas.classList.add("dragging");
@@ -648,6 +699,7 @@
   });
   canvas.addEventListener("wheel", event => {
     event.preventDefault();
+    cancelNavigationAnimation();
     radius = Math.max(1,Math.min(50000,radius*Math.exp(event.deltaY*.0012)));
     requestRender();
   }, { passive:false });
