@@ -42,7 +42,16 @@ The gear menu controls display emphasis without changing catalog data:
 
 - **Grid:** off, the original light grid, or a prominent neon-blue grid.
 - **Grid normals:** off, light, or prominent spectral-color height lines.
-- **Star size:** normal, large, or accurate. Accurate uses a compressed
+- **Contact lines:** off, normal (the default), or prominent. Contact lines
+  are drawn flat on the Z=0 grid plane: from the focused star's foot point —
+  where its perpendicular meets the plane — one line runs to the foot point
+  of every other visible star, each line in that star's spectral color. If
+  the focused star sits off the plane, its own perpendicular is drawn first,
+  in its spectral color, so the star stays connected to its planar fan even
+  when grid normals are off. The focused star is the one centered by
+  double-click, search, or reset (Sol on start); single-clicking a star only
+  shows its details and does not move the contact lines.
+- **Star size:** normal, large (the default), or accurate. Accurate uses a compressed
   logarithmic visual-luminosity scale derived from apparent magnitude and
   distance; stars without the required photometry use a neutral fallback size.
 - **Sol indicator:** when enabled, a selected star gets a gold direction line

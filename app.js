@@ -45,6 +45,7 @@
   let pitch = DEFAULT.pitch;
   let target = [...DEFAULT.target];
   let selected = null;
+  let focused = null;
   let hovered = null;
   let pointer = null;
   let spaceHeld = false;
@@ -54,7 +55,7 @@
   let searchMatches = [];
   let activeSearchIndex = -1;
   let currentTypeContext = { category:"yellow_dwarf", code:"G2V" };
-  const displaySettings = { grid:"light", normals:"light", starSize:"normal", solIndicator:true, cropSphere:true };
+  const displaySettings = { grid:"light", normals:"light", contactLines:"normal", starSize:"large", solIndicator:true, cropSphere:true };
   const movementKeys = new Set();
   let movementFrame = 0;
   let lastMovementTime = 0;
@@ -325,6 +326,21 @@
     gl.disable(gl.DEPTH_TEST);
     drawGeometry(gl.LINES, verticalPositions, verticalColors);
 
+    if (displaySettings.contactLines !== "off") {
+      const contactAlpha = displaySettings.contactLines === "prominent" ? .88 : .38;
+      const foot = focused ? [focused.x,focused.y,0] : [0,0,0];
+      const contactPositions = [], contactColors = [];
+      if (focused && Math.abs(focused.z) > radius*.002) {
+        line([focused.x,focused.y,focused.z],foot,[...spectralColor(focused.spectralType),contactAlpha],contactPositions,contactColors);
+      }
+      for (const star of visibleStars) {
+        if (star === focused) continue;
+        const color = spectralColor(star.spectralType);
+        line(foot,[star.x,star.y,0],[...color,contactAlpha],contactPositions,contactColors);
+      }
+      drawGeometry(gl.LINES,contactPositions,contactColors);
+    }
+
     if (displaySettings.solIndicator && selected) {
       const solLinePositions = [], solLineColors = [];
       line([selected.x,selected.y,selected.z],[0,0,0],[1,.68,.16,.76],solLinePositions,solLineColors);
@@ -502,12 +518,13 @@
       }
     }
     selectStar(star);
+    focused = star;
     animateViewTo(destinationTarget,zoomIn ? Math.min(radius,5) : radius);
   }
 
   function reset() {
     cancelNavigationAnimation();
-    radius = DEFAULT.radius; yaw = DEFAULT.yaw; pitch = DEFAULT.pitch; target = [...DEFAULT.target]; selectStar(null); requestRender();
+    radius = DEFAULT.radius; yaw = DEFAULT.yaw; pitch = DEFAULT.pitch; target = [...DEFAULT.target]; focused = null; selectStar(null); requestRender();
   }
 
   async function toggleFullscreen() {
@@ -640,6 +657,9 @@
   }));
   document.querySelectorAll('input[name="normal-strength"]').forEach(input => input.addEventListener("change", () => {
     if (input.checked) { displaySettings.normals=input.value; requestRender(); }
+  }));
+  document.querySelectorAll('input[name="contact-lines"]').forEach(input => input.addEventListener("change", () => {
+    if (input.checked) { displaySettings.contactLines=input.value; requestRender(); }
   }));
   document.querySelectorAll('input[name="star-size"]').forEach(input => input.addEventListener("change", () => {
     if (input.checked) { displaySettings.starSize=input.value; requestRender(); }
