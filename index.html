@@ -130,11 +130,13 @@
         <strong id="range-value">15.0 ly</strong>
       </div>
       <div class="scale-track"><span id="scale-fill"></span></div>
+      <input id="visibility-slider" type="range" min="0" max="200" step="1" value="50" aria-label="Maximum visibility distance in light-years" hidden>
       <div class="scale-row muted"><span>Grid interval</span><span id="grid-value">10 light-years</span></div>
       <div class="scale-row muted"><span>Visible stars</span><span id="visible-count">0</span></div>
     </aside>
 
     <nav id="actions" aria-label="Map actions">
+      <button id="observe-button" type="button" title="Toggle observation mode (Space)" aria-pressed="false">Observe <kbd>Space</kbd></button>
       <button id="reset-button" type="button" title="Reset view (R)">Reset <kbd>R</kbd></button>
       <button id="fullscreen-button" type="button" title="Toggle fullscreen (F)">Fullscreen <kbd>F</kbd></button>
     </nav>
@@ -142,7 +144,8 @@
     <footer>
       <div class="control"><i class="mouse drag"></i><span>Drag to rotate</span></div>
       <div class="control"><i class="mouse wheel"></i><span>Wheel to scale</span></div>
-      <div class="control"><kbd>Space</kbd><span>+ drag to pan</span></div>
+      <div class="control"><kbd>Shift</kbd><span>+ drag to pan</span></div>
+      <div class="control"><kbd>Space</kbd><span>observe mode</span></div>
       <div class="control"><kbd>WASD</kbd><span>move on plane</span></div>
       <div class="control"><kbd>Q E</kbd><span>move down / up</span></div>
       <span class="divider"></span>

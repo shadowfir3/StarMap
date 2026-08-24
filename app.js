@@ -15,6 +15,11 @@
   const PICK_RADIUS_PX = 14;
   const NAVIGATION_DURATION_MS = 440;
   const DEFAULT = Object.freeze({ radius: 15, yaw: Math.PI / 4, pitch: Math.atan(1 / Math.sqrt(2)), target: [0, 0, 0] });
+  const OBSERVE_FOV = Math.PI / 3;
+  const OBSERVE_START_FOV = 0.06; // narrow enough to approximate the orthographic map view
+  const OBSERVE_MIN_RANGE = 1;
+  const OBSERVE_MAX_RANGE = 50000;
+  const OBSERVE_SLIDER_STEPS = 200;
 
   const ui = {
     name: document.querySelector("#star-name"), type: document.querySelector("#star-type"),
@@ -32,6 +37,7 @@
     typeInfoTitle: document.querySelector("#type-info-title"), typeInfoCode: document.querySelector("#type-info-code"),
     typeInfoSummary: document.querySelector("#type-info-summary"), typeInfoFacts: document.querySelector("#type-info-facts"),
     typeInfoSources: document.querySelector("#type-info-sources"),
+    observeButton: document.querySelector("#observe-button"), visibilitySlider: document.querySelector("#visibility-slider"),
   };
 
   if (!gl) {
@@ -48,8 +54,17 @@
   let focused = null;
   let hovered = null;
   let pointer = null;
-  let spaceHeld = false;
   let viewProjection = new Float32Array(16);
+  let mode = "map";
+  let observeBlend = 0;
+  let observeYaw = 0; // azimuth 0 = +X (RA 0h), the coordinate system's north
+  let observePitch = 0;
+  let observerStar = null; // null = observing from Sol
+  let observerPos = [0, 0, 0];
+  let observeRange = null;
+  let blendStartTarget = [...DEFAULT.target];
+  let blendFrame = 0;
+  let solDrawAlpha = 1;
   let visibleStars = [];
   let needsRender = true;
   let searchMatches = [];
@@ -137,6 +152,13 @@
     ]);
   }
 
+  function perspective(fovY, aspect, near, far) {
+    const f = 1 / Math.tan(fovY / 2), nf = 1 / (near - far);
+    return new Float32Array([
+      f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0,
+    ]);
+  }
+
   function multiply(a, b) {
     const out = new Float32Array(16);
     for (let column = 0; column < 4; column++) for (let row = 0; row < 4; row++) {
@@ -213,22 +235,22 @@
     positions.push(...a, ...b); colors.push(...color, ...color);
   }
 
-  function buildGrid() {
+  function buildGrid(center) {
     const positions = [], colors = [];
     if (displaySettings.grid === "off") return { positions, colors };
     const step = gridStep();
     const extent = Math.ceil(radius / step + 1) * step;
-    const minX = Math.floor((target[0] - extent) / step) * step;
-    const maxX = Math.ceil((target[0] + extent) / step) * step;
-    const minY = Math.floor((target[1] - extent) / step) * step;
-    const maxY = Math.ceil((target[1] + extent) / step) * step;
+    const minX = Math.floor((center[0] - extent) / step) * step;
+    const maxX = Math.ceil((center[0] + extent) / step) * step;
+    const minY = Math.floor((center[1] - extent) / step) * step;
+    const maxY = Math.ceil((center[1] + extent) / step) * step;
     const grid = displaySettings.grid === "prominent" ? [0.05,0.72,1,0.62] : [0.22,0.55,0.68,0.12];
     for (let x = minX; x <= maxX; x += step) line([x,minY,0],[x,maxY,0],grid,positions,colors);
     for (let y = minY; y <= maxY; y += step) line([minX,y,0],[maxX,y,0],grid,positions,colors);
     return { positions, colors };
   }
 
-  function buildSphere() {
+  function buildSphere(center) {
     const positions = [], colors = [], segments = 96;
     if (!displaySettings.cropSphere) return { positions, colors };
     const color = [0.22, 0.64, 0.82, 0.13];
@@ -237,14 +259,48 @@
       const points = ring === 0 ? [[Math.cos(a),Math.sin(a),0],[Math.cos(b),Math.sin(b),0]]
         : ring === 1 ? [[Math.cos(a),0,Math.sin(a)],[Math.cos(b),0,Math.sin(b)]]
         : [[0,Math.cos(a),Math.sin(a)],[0,Math.cos(b),Math.sin(b)]];
-      line(points[0].map((v,j)=>target[j]+v*radius), points[1].map((v,j)=>target[j]+v*radius), color, positions, colors);
+      line(points[0].map((v,j)=>center[j]+v*radius), points[1].map((v,j)=>center[j]+v*radius), color, positions, colors);
     }
     return { positions, colors };
   }
 
+  function buildSkyGrid(alphaScale) {
+    const positions = [], colors = [];
+    if (displaySettings.grid === "off" || alphaScale <= 0) return { positions, colors };
+    const prominent = displaySettings.grid === "prominent";
+    const base = prominent ? [0.05, 0.72, 1] : [0.24, 0.58, 0.74];
+    const R = 900, segments = 96, sector = Math.PI / 4;
+    const point = (azimuth, altitude) => [
+      observerPos[0] + Math.cos(altitude) * Math.cos(azimuth) * R,
+      observerPos[1] + Math.cos(altitude) * Math.sin(azimuth) * R,
+      observerPos[2] + Math.sin(altitude) * R,
+    ];
+    for (let ring = -1; ring <= 1; ring++) {
+      const altitude = ring * sector;
+      const alpha = (ring === 0 ? (prominent ? .72 : .42) : (prominent ? .5 : .26)) * alphaScale;
+      for (let i = 0; i < segments; i++) {
+        line(point(i/segments*Math.PI*2, altitude), point((i+1)/segments*Math.PI*2, altitude), [...base, alpha], positions, colors);
+      }
+    }
+    const meridianAlpha = (prominent ? .5 : .26) * alphaScale;
+    for (let m = 0; m < 8; m++) {
+      const azimuth = m * sector;
+      for (let i = 0; i < segments / 2; i++) {
+        const a = -Math.PI/2 + i/(segments/2)*Math.PI, b = -Math.PI/2 + (i+1)/(segments/2)*Math.PI;
+        line(point(azimuth, a), point(azimuth, b), [...base, meridianAlpha], positions, colors);
+      }
+    }
+    return { positions, colors };
+  }
+
+  function scaleAlpha(colors, factor) {
+    if (factor < 1) for (let i = 3; i < colors.length; i += 4) colors[i] *= factor;
+    return colors;
+  }
+
   function project(point) {
     const p = transform(viewProjection, point);
-    if (p[3] === 0) return null;
+    if (p[3] < 1e-6) return null;
     const nx = p[0] / p[3], ny = p[1] / p[3], nz = p[2] / p[3];
     return { x: (nx * .5 + .5) * canvas.clientWidth, y: (1 - (ny * .5 + .5)) * canvas.clientHeight, visible: nz >= -1 && nz <= 1 };
   }
@@ -265,7 +321,7 @@
       label.style.left = `${screen.x}px`; label.style.top = `${screen.y}px`;
       ui.labels.append(label);
     }
-    if (displaySettings.solIndicator && selected) {
+    if (displaySettings.solIndicator && selected && observeBlend === 0) {
       const distance = Number(selected.distanceLy) || Math.hypot(selected.x,selected.y,selected.z);
       if (distance > 0) {
         const fractionTowardSol = Math.min(.5,(radius * .48) / distance);
@@ -294,11 +350,27 @@
     needsRender = false;
     const dpr = resize();
     const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
-    const halfHeight = radius * 1.08;
-    const eyeDistance = Math.max(100, radius * 4);
-    const direction = [Math.cos(pitch)*Math.cos(yaw), Math.cos(pitch)*Math.sin(yaw), Math.sin(pitch)];
-    const eye = target.map((value, i) => value + direction[i] * eyeDistance);
-    viewProjection = multiply(ortho(-halfHeight*aspect,halfHeight*aspect,-halfHeight,halfHeight,-eyeDistance*2,eyeDistance*2), lookAt(eye,target,[0,0,1]));
+    const blend = observeBlend;
+    const mapAlpha = 1 - blend;
+    let mapCenter = target;
+    if (blend === 0) {
+      const halfHeight = radius * 1.08;
+      const eyeDistance = Math.max(100, radius * 4);
+      const direction = [Math.cos(pitch)*Math.cos(yaw), Math.cos(pitch)*Math.sin(yaw), Math.sin(pitch)];
+      const eye = target.map((value, i) => value + direction[i] * eyeDistance);
+      viewProjection = multiply(ortho(-halfHeight*aspect,halfHeight*aspect,-halfHeight,halfHeight,-eyeDistance*2,eyeDistance*2), lookAt(eye,target,[0,0,1]));
+    } else {
+      const fov = OBSERVE_START_FOV + (OBSERVE_FOV - OBSERVE_START_FOV) * blend;
+      const eyeDistance = (radius * 1.08) / Math.tan(OBSERVE_START_FOV / 2) * (1 - blend);
+      const mapForward = [-Math.cos(pitch)*Math.cos(yaw), -Math.cos(pitch)*Math.sin(yaw), -Math.sin(pitch)];
+      const skyForward = observeDirection();
+      const mixed = mapForward.map((value, i) => value * (1 - blend) + skyForward[i] * blend);
+      const forward = Math.hypot(...mixed) < 1e-4 ? skyForward : normalize(mixed);
+      mapCenter = blendStartTarget.map((value, i) => value + (observerPos[i] - value) * blend);
+      const eye = mapCenter.map((value, i) => value - forward[i] * eyeDistance);
+      viewProjection = multiply(perspective(fov, aspect, 0.05, eyeDistance * 1.2 + 400000),
+        lookAt(eye, eye.map((value, i) => value + forward[i]), [0, 0, 1]));
+    }
 
     gl.clearColor(0.006, 0.018, 0.032, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -308,16 +380,36 @@
     gl.uniformMatrix4fv(locations.matrix, false, viewProjection);
     gl.uniform1f(locations.pixelRatio, dpr);
 
-    const grid = buildGrid();
-    drawGeometry(gl.LINES, grid.positions, grid.colors);
-    const sphere = buildSphere();
-    drawGeometry(gl.LINES, sphere.positions, sphere.colors);
+    if (mapAlpha > 0) {
+      const grid = buildGrid(mapCenter);
+      drawGeometry(gl.LINES, grid.positions, scaleAlpha(grid.colors, mapAlpha));
+      const sphere = buildSphere(mapCenter);
+      drawGeometry(gl.LINES, sphere.positions, scaleAlpha(sphere.colors, mapAlpha));
+    }
+    if (blend > 0) {
+      const sky = buildSkyGrid(blend);
+      drawGeometry(gl.LINES, sky.positions, sky.colors);
+    }
 
-    visibleStars = stars.filter(star => enabledCategories.has(star.category || "other")
-      && Math.hypot(star.x-target[0], star.y-target[1], star.z-target[2]) <= radius);
+    const fadeSpan = Math.max(observeRange * .25, 1e-6);
+    visibleStars = [];
+    const starAlphas = [];
+    for (const star of stars) {
+      if (!enabledCategories.has(star.category || "other")) continue;
+      let alpha = 0;
+      if (mapAlpha > 0 && Math.hypot(star.x-mapCenter[0], star.y-mapCenter[1], star.z-mapCenter[2]) <= radius) alpha += mapAlpha;
+      if (blend > 0 && star !== observerStar) {
+        const distance = Math.hypot(star.x-observerPos[0], star.y-observerPos[1], star.z-observerPos[2]);
+        if (distance <= observeRange) alpha += blend * Math.min(1, (observeRange - distance) / fadeSpan);
+      }
+      if (alpha < 0.02) continue;
+      visibleStars.push(star);
+      starAlphas.push(Math.min(1, alpha));
+    }
+
     const verticalPositions = [], verticalColors = [];
-    if (displaySettings.normals !== "off") {
-      const normalAlpha = displaySettings.normals === "prominent" ? .88 : .38;
+    if (displaySettings.normals !== "off" && mapAlpha > 0) {
+      const normalAlpha = (displaySettings.normals === "prominent" ? .88 : .38) * mapAlpha;
       for (const star of visibleStars) {
         const color = spectralColor(star.spectralType);
         if (Math.abs(star.z) > radius * .002) line([star.x,star.y,0],[star.x,star.y,star.z],[...color,normalAlpha],verticalPositions,verticalColors);
@@ -326,8 +418,8 @@
     gl.disable(gl.DEPTH_TEST);
     drawGeometry(gl.LINES, verticalPositions, verticalColors);
 
-    if (displaySettings.contactLines !== "off") {
-      const contactAlpha = displaySettings.contactLines === "prominent" ? .88 : .38;
+    if (displaySettings.contactLines !== "off" && mapAlpha > 0) {
+      const contactAlpha = (displaySettings.contactLines === "prominent" ? .88 : .38) * mapAlpha;
       const foot = focused ? [focused.x,focused.y,0] : [0,0,0];
       const contactPositions = [], contactColors = [];
       if (focused && Math.abs(focused.z) > radius*.002) {
@@ -341,30 +433,42 @@
       drawGeometry(gl.LINES,contactPositions,contactColors);
     }
 
-    if (displaySettings.solIndicator && selected) {
+    if (displaySettings.solIndicator && selected && mapAlpha > 0) {
       const solLinePositions = [], solLineColors = [];
-      line([selected.x,selected.y,selected.z],[0,0,0],[1,.68,.16,.76],solLinePositions,solLineColors);
+      line([selected.x,selected.y,selected.z],[0,0,0],[1,.68,.16,.76*mapAlpha],solLinePositions,solLineColors);
       drawGeometry(gl.LINES,solLinePositions,solLineColors);
     }
     gl.enable(gl.DEPTH_TEST);
 
-    const positions = [0,0,0], colors = [1,.84,.35,1], sizes = [solPointSize()];
-    for (const star of visibleStars) {
+    solDrawAlpha = mapAlpha;
+    if (blend > 0 && observerStar) {
+      const solDistance = Math.hypot(observerPos[0], observerPos[1], observerPos[2]);
+      if (solDistance <= observeRange) solDrawAlpha += blend * Math.min(1, (observeRange - solDistance) / fadeSpan);
+    }
+    solDrawAlpha = Math.min(1, solDrawAlpha);
+    const positions = [], colors = [], sizes = [];
+    if (solDrawAlpha > 0.02) { positions.push(0,0,0); colors.push(1,.84,.35,solDrawAlpha); sizes.push(solPointSize()); }
+    visibleStars.forEach((star, index) => {
       positions.push(star.x,star.y,star.z);
       const color = spectralColor(star.spectralType);
-      const alpha = star === selected ? 1 : .92;
+      const alpha = (star === selected ? 1 : .92) * starAlphas[index];
       colors.push(...color,alpha); sizes.push(star === selected ? starSize(star)+4 : starSize(star));
-    }
+    });
     gl.disable(gl.DEPTH_TEST);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     drawGeometry(gl.POINTS, positions, colors, sizes, true);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    ui.visible.textContent = String(visibleStars.length + 1);
-    const step = gridStep();
-    ui.grid.textContent = `${step} light-year${step === 1 ? "" : "s"}`;
-    ui.range.textContent = radius < 100 ? `${radius.toFixed(1)} ly` : `${Math.round(radius).toLocaleString()} ly`;
-    ui.fill.style.width = `${Math.max(4, Math.min(100, (Math.log10(radius)-Math.log10(1))/(Math.log10(50000))*100))}%`;
+    ui.visible.textContent = String(visibleStars.length + (solDrawAlpha > 0.02 ? 1 : 0));
+    if (mode === "observe") {
+      ui.grid.textContent = "45° sky sectors";
+      ui.range.textContent = observeRange < 100 ? `${observeRange.toFixed(1)} ly` : `${Math.round(observeRange).toLocaleString()} ly`;
+    } else {
+      const step = gridStep();
+      ui.grid.textContent = `${step} light-year${step === 1 ? "" : "s"}`;
+      ui.range.textContent = radius < 100 ? `${radius.toFixed(1)} ly` : `${Math.round(radius).toLocaleString()} ly`;
+      ui.fill.style.width = `${Math.max(4, Math.min(100, (Math.log10(radius)-Math.log10(1))/(Math.log10(50000))*100))}%`;
+    }
     updateLabels();
   }
 
@@ -433,7 +537,7 @@
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left, y = clientY - rect.top;
     let best, bestDistance = PICK_RADIUS_PX;
-    const sol = project([0,0,0]);
+    const sol = solDrawAlpha > 0.02 ? project([0,0,0]) : null;
     if (sol && Math.hypot(sol.x-x,sol.y-y) <= bestDistance) {
       best = { star: null, point: [0,0,0] };
       bestDistance = Math.hypot(sol.x-x,sol.y-y);
@@ -507,6 +611,91 @@
     navigationFrame = requestAnimationFrame(step);
   }
 
+  function observeDirection() {
+    return [Math.cos(observePitch)*Math.cos(observeYaw), Math.cos(observePitch)*Math.sin(observeYaw), Math.sin(observePitch)];
+  }
+
+  function sliderToDistance(value) {
+    return OBSERVE_MIN_RANGE * Math.exp(value / OBSERVE_SLIDER_STEPS * Math.log(OBSERVE_MAX_RANGE / OBSERVE_MIN_RANGE));
+  }
+
+  function distanceToSlider(distance) {
+    return Math.round(Math.log(distance / OBSERVE_MIN_RANGE) / Math.log(OBSERVE_MAX_RANGE / OBSERVE_MIN_RANGE) * OBSERVE_SLIDER_STEPS);
+  }
+
+  function animateBlend(destination, animate = true) {
+    if (blendFrame) { cancelAnimationFrame(blendFrame); blendFrame = 0; }
+    const start = observeBlend;
+    const span = destination - start;
+    if (!animate || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || Math.abs(span) < 1e-4) {
+      observeBlend = destination;
+      requestRender();
+      return;
+    }
+    const duration = NAVIGATION_DURATION_MS * Math.max(.4, Math.abs(span));
+    const startTime = performance.now();
+    function step(now) {
+      const progress = Math.min(1,(now-startTime)/duration);
+      const eased = 1-Math.pow(1-progress,3);
+      observeBlend = start + span * eased;
+      requestRender();
+      if (progress < 1) {
+        blendFrame = requestAnimationFrame(step);
+      } else {
+        blendFrame = 0;
+        observeBlend = destination;
+        requestRender();
+      }
+    }
+    blendFrame = requestAnimationFrame(step);
+  }
+
+  function setObserveMode(observe, animate = true) {
+    if ((mode === "observe") === observe) return;
+    cancelNavigationAnimation();
+    movementKeys.clear();
+    mode = observe ? "observe" : "map";
+    if (observe) {
+      observerStar = focused;
+      observerPos = focused ? [focused.x,focused.y,focused.z] : [0,0,0];
+      if (observeRange === null) observeRange = Math.max(OBSERVE_MIN_RANGE, Math.min(OBSERVE_MAX_RANGE, radius));
+      ui.visibilitySlider.value = String(distanceToSlider(observeRange));
+      blendStartTarget = [...target];
+      target = [...observerPos];
+    } else {
+      blendStartTarget = [...target];
+    }
+    ui.observeButton.setAttribute("aria-pressed", String(observe));
+    viewport.classList.toggle("observing", observe);
+    ui.visibilitySlider.hidden = !observe;
+    animateBlend(observe ? 1 : 0, animate);
+  }
+
+  function travelToStar(star) {
+    cancelNavigationAnimation();
+    const destination = star ? [star.x,star.y,star.z] : [0,0,0];
+    observerStar = star;
+    target = [...destination];
+    blendStartTarget = [...destination];
+    const startPosition = [...observerPos];
+    const distance = Math.hypot(destination[0]-startPosition[0], destination[1]-startPosition[1], destination[2]-startPosition[2]);
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || distance < 1e-6) {
+      observerPos = destination;
+      requestRender();
+      return;
+    }
+    const duration = Math.min(680, NAVIGATION_DURATION_MS + Math.log10(1+distance)*42);
+    const startTime = performance.now();
+    function step(now) {
+      const progress = Math.min(1,(now-startTime)/duration);
+      const eased = 1-Math.pow(1-progress,3);
+      observerPos = startPosition.map((value,index) => value+(destination[index]-value)*eased);
+      requestRender();
+      navigationFrame = progress < 1 ? requestAnimationFrame(step) : 0;
+    }
+    navigationFrame = requestAnimationFrame(step);
+  }
+
   function centerOnStar(star, zoomIn = false) {
     let destinationTarget = [0,0,0];
     if (star) {
@@ -519,11 +708,15 @@
     }
     selectStar(star);
     focused = star;
+    if (mode === "observe") { travelToStar(star); return; }
     animateViewTo(destinationTarget,zoomIn ? Math.min(radius,5) : radius);
   }
 
   function reset() {
     cancelNavigationAnimation();
+    if (mode === "observe") setObserveMode(false, false);
+    else if (observeBlend > 0) animateBlend(0, false);
+    observeYaw = 0; observePitch = 0;
     radius = DEFAULT.radius; yaw = DEFAULT.yaw; pitch = DEFAULT.pitch; target = [...DEFAULT.target]; focused = null; selectStar(null); requestRender();
   }
 
@@ -682,7 +875,7 @@
   canvas.addEventListener("pointerdown", event => {
     cancelNavigationAnimation();
     canvas.setPointerCapture(event.pointerId);
-    pointer = { id:event.pointerId, x:event.clientX, y:event.clientY, startX:event.clientX, startY:event.clientY, moved:false, pan:spaceHeld };
+    pointer = { id:event.pointerId, x:event.clientX, y:event.clientY, startX:event.clientX, startY:event.clientY, moved:false, pan:event.shiftKey };
     canvas.classList.add("dragging");
   });
   canvas.addEventListener("pointermove", event => {
@@ -691,7 +884,11 @@
     const dx = event.clientX-pointer.x, dy = event.clientY-pointer.y;
     pointer.x=event.clientX; pointer.y=event.clientY;
     if (Math.hypot(event.clientX-pointer.startX,event.clientY-pointer.startY) > 4) pointer.moved=true;
-    if (pointer.pan) {
+    if (mode === "observe") {
+      const lookScale = OBSERVE_FOV / Math.max(1, canvas.clientHeight);
+      observeYaw += dx*lookScale;
+      observePitch = Math.max(-1.55,Math.min(1.55,observePitch+dy*lookScale));
+    } else if (pointer.pan) {
       const scale = (radius*2.16)/canvas.clientHeight;
       const right = [-Math.sin(yaw), Math.cos(yaw), 0];
       const forwardPlane = [-Math.cos(yaw),-Math.sin(yaw),0];
@@ -719,28 +916,48 @@
   });
   canvas.addEventListener("wheel", event => {
     event.preventDefault();
+    if (mode === "observe") {
+      observeRange = Math.max(OBSERVE_MIN_RANGE,Math.min(OBSERVE_MAX_RANGE,observeRange*Math.exp(event.deltaY*.0012)));
+      ui.visibilitySlider.value = String(distanceToSlider(observeRange));
+      requestRender();
+      return;
+    }
     cancelNavigationAnimation();
     radius = Math.max(1,Math.min(50000,radius*Math.exp(event.deltaY*.0012)));
     requestRender();
   }, { passive:false });
   window.addEventListener("keydown", event => {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-    if (["KeyW","KeyA","KeyS","KeyD","KeyQ","KeyE"].includes(event.code)) {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      if (event.target === ui.visibilitySlider && event.code === "Space") {
+        event.preventDefault();
+        if (!event.repeat) setObserveMode(mode !== "observe");
+      }
+      return;
+    }
+    if (event.code === "Space") {
+      event.preventDefault();
+      if (!event.repeat) setObserveMode(mode !== "observe");
+      return;
+    }
+    if (mode === "map" && ["KeyW","KeyA","KeyS","KeyD","KeyQ","KeyE"].includes(event.code)) {
       event.preventDefault(); movementKeys.add(event.code); startMovement();
     }
-    if (event.code === "Space") { spaceHeld=true; event.preventDefault(); }
     if (event.key.toLowerCase() === "r") reset();
     if (event.key.toLowerCase() === "f") { event.preventDefault(); toggleFullscreen().catch(() => {}); }
     if (event.key === "Escape") closeTypeInfo();
   });
   window.addEventListener("keyup", event => {
-    if (event.code === "Space") spaceHeld=false;
     movementKeys.delete(event.code);
   });
-  window.addEventListener("blur", () => { spaceHeld=false; movementKeys.clear(); });
+  window.addEventListener("blur", () => { movementKeys.clear(); });
   window.addEventListener("resize", () => {
     requestRender();
     if (!ui.typeInfoPopup.hidden) positionTypeInfoPopup();
+  });
+  ui.observeButton.addEventListener("click", () => setObserveMode(mode !== "observe"));
+  ui.visibilitySlider.addEventListener("input", () => {
+    observeRange = sliderToDistance(Number(ui.visibilitySlider.value));
+    requestRender();
   });
   document.querySelector("#reset-button").addEventListener("click", reset);
   document.querySelector("#fullscreen-button").addEventListener("click", () => toggleFullscreen().catch(() => {}));

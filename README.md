@@ -22,7 +22,7 @@ Controls:
 - Mouse drag: rotate the isometric view.
 - Mouse wheel: change both map scale and the spherical visibility cutoff. The
   grid adapts through 1, 5, 10, 50, and 100 ly intervals.
-- Hold `Space` and drag: move the view center along the X/Y reference plane.
+- Hold `Shift` and drag: move the view center along the X/Y reference plane.
 - Hold `W`, `A`, `S`, or `D`: continuously move the view center along that
   plane, relative to the current camera direction. `Q` moves below the plane
   and `E` moves above it.
@@ -37,6 +37,20 @@ Controls:
   dwarfs; and uncategorized objects. All layers start enabled.
 - `R`: restore Sol, the 15 ly range, and the initial rotation.
 - `F`: enter or leave fullscreen mode.
+- `Space` or the **Observe** button: toggle observation mode.
+
+Observation mode switches to a first-person view of the sky from the focused
+star (the one centered by double-click, search, or reset; Sol on start). The
+star is treated as a point in space, so nothing is occluded. Instead of the
+planar reference grid, the blue grid is projected as a sky globe divided into
+45° azimuth/altitude sectors in the same equatorial frame. Dragging pans the
+viewing direction only; the direction starts at the coordinate system's north
+(azimuth 0° toward RA 0h, altitude 0°) and is remembered when switching between
+map and observation mode. Both switches are animated like double-click
+navigation. The visibility-sphere panel swaps its scale bar for a slider (the
+mouse wheel works too) that sets the maximum visibility distance; stars beyond
+75 % of that distance fade out progressively until they vanish at the limit.
+Double-clicking a star in observation mode moves the observer to that star.
 
 The gear menu controls display emphasis without changing catalog data:
 
