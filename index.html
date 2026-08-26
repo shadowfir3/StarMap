@@ -18,13 +18,18 @@
         <div><dt>Type</dt><dd class="type-value"><span id="star-type">G2V · Yellow dwarf</span><button id="type-info-button" type="button" aria-label="About this star type" aria-expanded="false">i</button></dd></div>
         <div><dt>Distance</dt><dd id="star-distance">0.000 ly</dd></div>
         <div><dt>Position</dt><dd id="star-position">Origin</dd></div>
+        <div><dt>Locality</dt><dd id="star-locality">Milky Way</dd></div>
       </dl>
+      <figure id="object-image" hidden>
+        <img id="object-image-img" alt="" decoding="async">
+        <figcaption id="object-image-credit"></figcaption>
+      </figure>
       <p id="star-source">Reference frame origin</p>
     </section>
 
     <section id="type-info-popup" class="glass" role="dialog" aria-labelledby="type-info-title" hidden>
       <button id="type-info-close" type="button" aria-label="Close star type information">×</button>
-      <p class="eyebrow">Stellar type</p>
+      <p class="eyebrow" id="type-info-eyebrow">Stellar type</p>
       <h3 id="type-info-title">G-type main-sequence star</h3>
       <p id="type-info-code">Catalog code · G2V</p>
       <p id="type-info-summary"></p>
@@ -45,7 +50,7 @@
           <span>Search</span>
         </button>
         <section id="search-panel" class="tool-panel glass" hidden>
-          <label for="star-search">Find a positioned star</label>
+          <label for="star-search">Find a positioned object</label>
           <input id="star-search" type="search" autocomplete="off" spellcheck="false" placeholder="Start typing a name…" aria-controls="search-results" aria-autocomplete="list">
           <div id="search-results" role="listbox"></div>
         </section>
@@ -57,7 +62,7 @@
           <span>Layers</span>
         </button>
         <section id="layers-panel" class="tool-panel glass" hidden>
-          <div class="panel-heading"><span>Stellar layers</span><button id="layers-all" type="button">All</button></div>
+          <div class="panel-heading"><span>Object layers</span><button id="layers-all" type="button">All</button></div>
           <fieldset>
             <legend>Main-sequence stars</legend>
             <label><input type="checkbox" data-category="red_dwarf" checked><i class="swatch red"></i><span>Red dwarfs</span><b data-count="red_dwarf">0</b></label>
@@ -75,6 +80,10 @@
             <label><input type="checkbox" data-category="giant_or_supergiant" checked><i class="swatch orange"></i><span>Giants &amp; supergiants</span><b data-count="giant_or_supergiant">0</b></label>
             <label><input type="checkbox" data-category="brown_dwarf" checked><i class="swatch brown"></i><span>Brown dwarfs</span><b data-count="brown_dwarf">0</b></label>
             <label><input type="checkbox" data-category="other" checked><i class="swatch gray"></i><span>Other / unknown</span><b data-count="other">0</b></label>
+          </fieldset>
+          <fieldset>
+            <legend>Nebulae &amp; remnants</legend>
+            <label><input type="checkbox" data-category="nebula" checked><i class="swatch nebula"></i><span>Nebulae (imaged)</span><b data-count="nebula">0</b></label>
           </fieldset>
         </section>
       </div>
@@ -132,7 +141,7 @@
       <div class="scale-track"><span id="scale-fill"></span></div>
       <input id="visibility-slider" type="range" min="0" max="200" step="1" value="50" aria-label="Maximum visibility distance in light-years" hidden>
       <div class="scale-row muted"><span>Grid interval</span><span id="grid-value">10 light-years</span></div>
-      <div class="scale-row muted"><span>Visible stars</span><span id="visible-count">0</span></div>
+      <div class="scale-row muted"><span>Visible objects</span><span id="visible-count">0</span></div>
     </aside>
 
     <nav id="actions" aria-label="Map actions">
@@ -155,6 +164,7 @@
   </main>
 
   <script src="data/stars.js"></script>
+  <script src="data/nebulae.js"></script>
   <script src="data/star-types.js"></script>
   <script src="app.js"></script>
 </body>

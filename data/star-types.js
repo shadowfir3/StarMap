@@ -67,5 +67,69 @@ window.STAR_TYPE_DESCRIPTIONS = {
     facts: ["Letter classes O–B–A–F–G–K–M are subdivided from 0 to 9.", "D denotes white-dwarf spectra; L, T, and Y are commonly used for brown dwarfs."],
     sourceTitle: "Wikipedia · Stellar classification",
     sourceUrl: "https://en.wikipedia.org/wiki/Stellar_classification"
+  },
+  // Nebula families for the imaged objects in data/nebulae.js (paraphrased from
+  // the linked English Wikipedia articles, retrieved 2026-08-26).
+  nebula_hii: {
+    group: "nebula",
+    title: "Emission nebula (H II region)",
+    summary: "A cloud of interstellar gas ionised by the ultraviolet light of hot, young stars. The recombining hydrogen glows, most strongly in the red H-alpha line, marking regions of recent and ongoing star formation.",
+    facts: ["H II regions span from a few to several hundred light-years and trace the spiral arms.", "Their distances usually come from the parallaxes of the embedded young stars or clusters."],
+    sourceTitle: "Wikipedia · H II region",
+    sourceUrl: "https://en.wikipedia.org/wiki/H_II_region",
+    secondaryTitle: "Wikipedia · Emission nebula",
+    secondaryUrl: "https://en.wikipedia.org/wiki/Emission_nebula"
+  },
+  nebula_planetary: {
+    group: "nebula",
+    title: "Planetary nebula",
+    summary: "An expanding shell of gas ejected by a dying low- or intermediate-mass star and lit by its hot exposed core, which is becoming a white dwarf. The name is historical; planetary nebulae have nothing to do with planets.",
+    facts: ["Typical sizes are about a light-year; the phase lasts only some tens of thousands of years.", "Gaia parallaxes of the central stars now give many of them reliable distances."],
+    sourceTitle: "Wikipedia · Planetary nebula",
+    sourceUrl: "https://en.wikipedia.org/wiki/Planetary_nebula"
+  },
+  nebula_snr: {
+    group: "nebula",
+    title: "Supernova remnant",
+    summary: "The expanding debris of an exploded star sweeping up the surrounding interstellar medium. Remnants shine in radio, optical and X-ray light for tens of thousands of years, and some contain a pulsar or other compact object.",
+    facts: ["Distances are often derived from expansion proper motions, pulsar parallaxes or absorbing foreground stars.", "The historical supernovae of 1006, 1054, 1572 and 1604 all left remnants that are still observed."],
+    sourceTitle: "Wikipedia · Supernova remnant",
+    sourceUrl: "https://en.wikipedia.org/wiki/Supernova_remnant"
+  },
+  nebula_reflection: {
+    group: "nebula",
+    title: "Reflection nebula",
+    summary: "A cloud of interstellar dust that shines by scattering the light of nearby stars rather than by its own emission. Scattering favours blue light, so reflection nebulae usually appear blue.",
+    facts: ["The illuminating stars are not hot enough to ionise the gas, otherwise an emission nebula would form.", "Many reflection nebulae belong to larger star-forming complexes."],
+    sourceTitle: "Wikipedia · Reflection nebula",
+    sourceUrl: "https://en.wikipedia.org/wiki/Reflection_nebula"
+  },
+  nebula_dark: {
+    group: "nebula",
+    title: "Dark nebula / molecular cloud",
+    summary: "A dense cloud of gas and dust that blocks the light of the stars behind it. Dark nebulae are the cold, dense parts of molecular clouds in which new stars form.",
+    facts: ["Their distances are measured with the parallaxes of embedded young stars or from three-dimensional dust maps.", "Examples such as the Coalsack and the Pipe are visible to the naked eye as gaps in the Milky Way."],
+    sourceTitle: "Wikipedia · Dark nebula",
+    sourceUrl: "https://en.wikipedia.org/wiki/Dark_nebula",
+    secondaryTitle: "Wikipedia · Molecular cloud",
+    secondaryUrl: "https://en.wikipedia.org/wiki/Molecular_cloud"
+  },
+  nebula_protoplanetary: {
+    group: "nebula",
+    title: "Protoplanetary nebula",
+    summary: "A short-lived object between the asymptotic-giant-branch phase and a planetary nebula: the ejected envelope is still lit by reflected starlight because the central star is not yet hot enough to ionise it.",
+    facts: ["The phase lasts only a few thousand years, so few examples are known.", "Bipolar shapes are common and point to outflows shaped by companions or discs."],
+    sourceTitle: "Wikipedia · Protoplanetary nebula",
+    sourceUrl: "https://en.wikipedia.org/wiki/Protoplanetary_nebula"
+  },
+  nebula_lbv: {
+    group: "nebula",
+    title: "Ejecta nebula of a luminous blue variable",
+    summary: "Material thrown off in the giant eruptions of a very massive, unstable star. The Homunculus around Eta Carinae, ejected in the 1840s, is the best-studied example.",
+    facts: ["Such nebulae expand at hundreds of kilometres per second and can be dated from their expansion.", "Luminous blue variables are candidates for the next Galactic supernovae."],
+    sourceTitle: "Wikipedia · Luminous blue variable",
+    sourceUrl: "https://en.wikipedia.org/wiki/Luminous_blue_variable",
+    secondaryTitle: "Wikipedia · Homunculus Nebula",
+    secondaryUrl: "https://en.wikipedia.org/wiki/Homunculus_Nebula"
   }
 };

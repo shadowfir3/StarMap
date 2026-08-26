@@ -26,6 +26,7 @@ WGSN_URL = "https://exopla.net/star-names/modern-iau-star-names/"
 SIMBAD_TAP_URL = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
 GAIA_TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
 VIZIER_TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
+VIZIER_ASU_URL = "https://vizier.cds.unistra.fr/viz-bin/asu-tsv"
 LY_PER_PC = 3.261563777
 NEARBY_LIMIT_LY = 50.0
 NEARBY_MIN_PARALLAX_MAS = 1000.0 / (NEARBY_LIMIT_LY / LY_PER_PC)
@@ -50,7 +51,85 @@ CURATED = {
     "Deneb": ["NAME Deneb", "Deneb"],
     "Arcturus": ["NAME Arcturus", "Arcturus"],
     "Antares": ["NAME Antares", "Antares"],
+    # Galactic centre
+    "Sagittarius A*": ["NAME Sgr A*"],
+    "S2 (S0-2)": ["[EG97] S2"],
+    "Pistol Star": ["NAME Pistol Star"],
+    # Hypergiants and extreme supergiants
+    "VY Canis Majoris": ["V* VY CMa"],
+    "Mu Cephei": ["* mu. Cep"],
+    "NML Cygni": ["NML Cyg"],
+    "Westerlund 1-26": ["Cl* Westerlund 1 W 26"],
+    "RW Cephei": ["V* RW Cep"],
+    "VV Cephei": ["V* VV Cep"],
+    "KY Cygni": ["V* KY Cyg"],
+    "RSGC1-F01": ["[FMR2006] 1"],
+    "Rho Cassiopeiae": ["* rho Cas"],
+    "HR 5171 A": ["HD 119796"],
+    "V838 Monocerotis": ["V* V838 Mon"],
+    "WR 104": ["WR 104"],
+    "WR 124": ["WR 124"],
+    "Sher 25": ["NAME Sher 25 star"],
+    "WOH G64": ["WOH G 64"],
+    "S Doradus": ["V* S Dor"],
+    "Mira": ["* omi Cet"],
+    # Black holes and X-ray binaries
+    "Cygnus X-1": ["HD 226868"],
+    "V404 Cygni": ["V* V404 Cyg"],
+    "Gaia BH1": ["Gaia DR3 4373465352415301632"],
+    "Gaia BH2": ["Gaia DR3 5870569352746779008"],
+    "Gaia BH3": ["Gaia DR3 4318465066420528000"],
+    "SS 433": ["SS 433"],
+    "V4641 Sagittarii": ["V* V4641 Sgr"],
+    "A0620-00": ["1A 0620-00"],
+    "GRS 1915+105": ["Granat 1915+105"],
+    "MAXI J1820+070": ["MAXI J1820+070"],
+    # Pulsars
+    "Crab Pulsar": ["PSR B0531+21"],
+    "Vela Pulsar": ["PSR B0833-45"],
+    "Geminga": ["NAME Geminga"],
+    "PSR B1919+21": ["PSR B1919+21"],
+    "PSR J0437-4715": ["PSR J0437-4715"],
+    # Exoplanet hosts, nearby and historically notable stars
+    "Methuselah Star": ["HD 140283"],
+    "Kepler-186": ["Kepler-186"],
+    "Kepler-452": ["Kepler-452"],
+    "Kepler-22": ["Kepler-22"],
+    "Kepler-90": ["Kepler-90"],
+    "HD 209458": ["HD 209458"],
+    "T Coronae Borealis": ["V* T CrB"],
+    "RR Lyrae": ["V* RR Lyr"],
+    "Wolf 359": ["V* CN Leo"],
+    "Gliese 581": ["BD-07 4003"],
+    "Gliese 667 C": ["GJ 667 C"],
+    "Gliese 876": ["GJ 876"],
+    "Ross 128": ["V* FI Vir"],
+    "Lalande 21185": ["HD 95735"],
+    "Groombridge 34 A": ["HD 1326"],
+    "Luyten's Star": ["BD+05 1668"],
+    "Teegarden's Star": ["NAME Teegarden's Star"],
+    "Kapteyn's Star": ["HD 33793"],
+    "Van Maanen's Star": ["Wolf 28"],
+    "WISE 0855-0714": ["WISEA J085510.74-071442.5"],
 }
+
+# Explicit stellar categories for objects whose SIMBAD object type does not
+# reveal the compact object (X-ray binaries, astrometric binaries, Sgr A*).
+CATEGORY_OVERRIDES = {
+    "NAME Sgr A*": "black_hole", "HD 226868": "black_hole", "V* V404 Cyg": "black_hole",
+    "Gaia DR3 4373465352415301632": "black_hole", "Gaia DR3 5870569352746779008": "black_hole",
+    "Gaia DR3 4318465066420528000": "black_hole", "SS 433": "black_hole", "V* V4641 Sgr": "black_hole",
+    "1A 0620-00": "black_hole", "Granat 1915+105": "black_hole", "MAXI J1820+070": "black_hole",
+}
+
+# Host galaxy or wider context.  Everything else defaults to the Milky Way;
+# positioned objects beyond EXTRAGALACTIC_LY without an entry are flagged.
+DEFAULT_LOCALITY = "Milky Way"
+LOCALITY_OVERRIDES = {
+    "BAT99 108": "Large Magellanic Cloud", "RMC 136a1": "Large Magellanic Cloud",
+    "WOH G 64": "Large Magellanic Cloud", "V* S Dor": "Large Magellanic Cloud",
+}
+EXTRAGALACTIC_LY = 100000.0
 
 # Distant or crowded massive stars often have unusable parallaxes.  These
 # values are deliberately explicit rather than silently inverting them.
@@ -61,7 +140,60 @@ LITERATURE_DISTANCE_PC = {
     "* eta Car": (2300.0, "literature_distance", "Smith 2006; distance 2.3 +/- 0.1 kpc"),
     "V* UY Sct": (2900.0, "uncertain_literature_distance", "Arroyo-Torres et al. 2013; adopted 2.9 kpc"),
     "BAT99 108": (49590.0, "host_system_distance", "Pietrzynski et al. 2019; adopted LMC distance 49.59 kpc"),
+    # Galactic centre
+    "NAME Sgr A*": (8277.0, "literature_distance", "GRAVITY Collaboration 2022 (A&A 657, L12): R0 = 8.277 +/- 0.009 (stat) +/- 0.033 (sys) kpc from the S2 orbit"),
+    "[EG97] S2": (8277.0, "host_system_distance", "S2 orbits Sgr A*; Galactic-centre distance 8.277 kpc adopted (GRAVITY Collaboration 2022)"),
+    "NAME Pistol Star": (8277.0, "host_system_distance", "Quintuplet cluster member near the Galactic centre; 8.277 kpc adopted (GRAVITY Collaboration 2022)"),
+    # Hypergiants and supergiants with unusable optical parallaxes
+    "V* VY CMa": (1200.0, "literature_distance", "Zhang et al. 2012 (AJ 143, 70): VLBA SiO-maser parallax 0.83 +/- 0.08 mas -> 1.20 +0.13/-0.10 kpc"),
+    "* mu. Cep": (940.0, "uncertain_literature_distance", "Davies & Beasor 2020 (MNRAS 493, 468) adopt 940 pc; published values span 390-1800 pc"),
+    "NML Cyg": (1610.0, "literature_distance", "Zhang et al. 2012 (A&A 544, A42): VLBI H2O-maser parallax -> 1.61 +0.13/-0.11 kpc"),
+    "Cl* Westerlund 1 W 26": (4100.0, "host_system_distance", "Westerlund 1 cluster distance 4.1 +/- 0.2 kpc (Negueruela et al. 2022, A&A 664, A146); own Gaia parallax unusable"),
+    "V* RW Cep": (3400.0, "uncertain_literature_distance", "Anugu et al. 2023 (AJ 166, 78) adopt 3.4 kpc; Gaia DR3 parallax 0.114 +/- 0.034 mas"),
+    "V* VV Cep": (1000.0, "uncertain_literature_distance", "Gaia DR3 parallax 1.003 +/- 0.107 mas inverted (SNR 9.4, below the 10 threshold)"),
+    "[FMR2006] 1": (6600.0, "host_system_distance", "RSGC1 cluster kinematic distance 6.6 +/- 0.9 kpc (Davies et al. 2008, ApJ 676, 1016)"),
+    "* rho Cas": (2500.0, "uncertain_literature_distance", "Cas OB5 association distance ~2.5 kpc; published values span 1.0-3.4 kpc"),
+    "HD 119796": (3600.0, "uncertain_literature_distance", "Chesneau et al. 2014 (A&A 563, A71): 3.6 +/- 0.5 kpc; van Genderen et al. 2019 argue ~1.5 kpc"),
+    "WR 104": (2580.0, "uncertain_literature_distance", "Soulain et al. 2018 (A&A 618, A108) ~2.58 kpc; the Gaia DR3 parallax of this pinwheel binary is considered spurious", True),
+    "NAME Sher 25 star": (6400.0, "uncertain_literature_distance", "Gaia DR3 parallax 0.156 +/- 0.017 mas inverted (SNR 9.4, below the 10 threshold); NGC 3603 lies at ~7 kpc"),
+    "WOH G 64": (49590.0, "host_system_distance", "LMC member; Pietrzynski et al. 2019 LMC distance 49.59 kpc"),
+    "V* S Dor": (49590.0, "host_system_distance", "LMC member; Pietrzynski et al. 2019 LMC distance 49.59 kpc"),
+    "* omi Cet": (92.0, "uncertain_literature_distance", "van Leeuwen 2007 Hipparcos parallax 10.91 +/- 1.22 mas -> 92 +/- 10 pc"),
+    # Black holes
+    "V* V404 Cyg": (2390.0, "literature_distance", "Miller-Jones et al. 2009 (ApJ 706, L230): VLBI parallax -> 2.39 +/- 0.14 kpc"),
+    "Gaia DR3 4373465352415301632": (480.0, "literature_distance", "El-Badry et al. 2023 (MNRAS 518, 1057): Gaia DR3 parallax 2.09 mas -> 480 +/- 27 pc"),
+    "Gaia DR3 5870569352746779008": (1160.0, "literature_distance", "El-Badry et al. 2023 (MNRAS 521, 4323): Gaia DR3 astrometric orbit -> 1.16 +/- 0.02 kpc"),
+    "Gaia DR3 4318465066420528000": (591.0, "literature_distance", "Gaia Collaboration (Panuzzo et al.) 2024 (A&A 686, L2): 590.6 +/- 5.8 pc"),
+    "SS 433": (5500.0, "literature_distance", "Blundell & Bowler 2004 (ApJ 616, L159): jet kinematic distance 5.5 +/- 0.2 kpc; Gaia DR3 parallax disagrees"),
+    "V* V4641 Sgr": (6200.0, "uncertain_literature_distance", "MacDonald et al. 2014 (ApJ 784, 2): 6.2 +/- 0.7 kpc; Gaia DR3 parallax agrees within errors"),
+    "1A 0620-00": (1060.0, "uncertain_literature_distance", "Cantrell et al. 2010 (ApJ 710, 1127): 1.06 +/- 0.12 kpc; Gaia DR3 suggests ~1.4 kpc"),
+    "Granat 1915+105": (8600.0, "uncertain_literature_distance", "Reid et al. 2014 (ApJ 796, 2): VLBI parallax -> 8.6 +2.0/-1.6 kpc"),
+    "MAXI J1820+070": (2960.0, "literature_distance", "Atri et al. 2020 (MNRAS 493, L81): VLBI parallax -> 2.96 +/- 0.33 kpc"),
+    # Pulsars
+    "PSR B0531+21": (1900.0, "literature_distance", "Lin et al. 2023 (ApJ 952, 161): VLBI parallax 0.53 +/- 0.06 mas -> 1.90 +0.22/-0.18 kpc"),
+    "PSR B0833-45": (287.0, "literature_distance", "Dodson et al. 2003 (ApJ 596, 1137): VLBI parallax 3.5 +/- 0.2 mas -> 287 +19/-17 pc"),
+    "NAME Geminga": (250.0, "uncertain_literature_distance", "Faherty, Walter & Anderson 2007 (Ap&SS 308, 225): HST parallax 4.0 +/- 1.3 mas -> 250 +120/-62 pc"),
+    "PSR B1919+21": (1000.0, "uncertain_literature_distance", "Dispersion-measure distance only: NE2001 ~1.0 kpc, YMW16 ~0.3 kpc"),
 }
+
+
+def literature_distance(main_id: str, identifiers: list[str]) -> tuple[float, str, str, bool] | None:
+    """Return (distance_pc, quality, note, force) for a curated literature distance."""
+    table = {identifier_key(key): value for key, value in LITERATURE_DISTANCE_PC.items()}
+    for key in [main_id, *identifiers]:
+        entry = table.get(identifier_key(key))
+        if entry:
+            return entry[0], entry[1], entry[2], (bool(entry[3]) if len(entry) > 3 else False)
+    return None
+
+
+def alias_lookup(table: dict[str, str], main_id: str, identifiers: list[str]) -> str:
+    normalized = {identifier_key(key): value for key, value in table.items()}
+    for key in [main_id, *identifiers]:
+        value = normalized.get(identifier_key(key))
+        if value:
+            return value
+    return ""
 
 LITERATURE_ONLY = [{
     "main_id": "Stephenson 2-18", "ra": 279.759875, "dec": -6.0862597,
@@ -79,7 +211,7 @@ COLUMNS = [
     "proper_motion_ra_mas_yr", "proper_motion_dec_mas_yr",
     "radial_velocity_km_s", "distance_pc", "distance_ly", "x_ly", "y_ly",
     "z_ly", "r_ly", "phi_deg", "theta_deg", "apparent_magnitude",
-    "spectral_type", "stellar_category", "astrometry_source", "distance_quality_flag",
+    "spectral_type", "stellar_category", "locality", "astrometry_source", "distance_quality_flag",
     "selection_reason", "fame_score", "notes",
 ]
 
@@ -158,6 +290,11 @@ def adql_string(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def identifier_key(value: str) -> str:
+    """SIMBAD pads identifiers ("HD  95735", "Wolf   28"); compare them whitespace-insensitively."""
+    return re.sub(r"\s+", " ", value.strip()).casefold()
+
+
 def parse_wgsn() -> list[dict[str, str]]:
     parser = WgsnTableParser()
     parser.feed(http_text(WGSN_URL))
@@ -188,11 +325,28 @@ def row_to_object(values: list[Any]) -> dict[str, Any]:
 
 
 def query_vizier_bright() -> list[dict[str, Any]]:
-    rows = tap_query(
-        VIZIER_TAP_URL,
-        f'SELECT HR,Vmag FROM "V/50/catalog" WHERE Vmag < {BRIGHT_V_LIMIT}',
-    )
-    return [{"hr": str(hr), "vmag": float(vmag)} for hr, vmag in rows if hr is not None]
+    try:
+        rows = tap_query(
+            VIZIER_TAP_URL,
+            f'SELECT HR,Vmag FROM "V/50/catalog" WHERE Vmag < {BRIGHT_V_LIMIT}',
+        )
+        return [{"hr": str(hr), "vmag": float(vmag)} for hr, vmag in rows if hr is not None]
+    except RuntimeError as error:
+        # TAPVizieR is occasionally unavailable (HTTP 503); the classic ASU
+        # TSV service serves the same V/50 table.
+        print(f"TAPVizieR failed ({error}); falling back to the VizieR ASU service", flush=True)
+    query = urlencode({"-source": "V/50/catalog", "Vmag": f"<{BRIGHT_V_LIMIT:g}", "-out": "HR,Vmag", "-out.max": "unlimited"})
+    rows = []
+    for line in http_text(f"{VIZIER_ASU_URL}?{query}").splitlines():
+        parts = [part.strip() for part in line.split("	")]
+        if len(parts) < 2 or not parts[0].isdigit():
+            continue
+        vmag = safe_float(parts[1])
+        if vmag is not None:
+            rows.append({"hr": parts[0], "vmag": vmag})
+    if len(rows) < 400:
+        raise RuntimeError(f"Expected at least 400 bright stars from VizieR, found {len(rows)}")
+    return rows
 
 
 def query_simbad_candidates(wgsn: list[dict[str, str]], bright: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], int]:
@@ -239,12 +393,12 @@ def query_simbad_candidates(wgsn: list[dict[str, str]], bright: list[dict[str, A
             ids.append(f"HIP {row['hip'].replace(',', '')}")
         for identifier in ids:
             if identifier:
-                lookup[identifier.casefold()] = row
+                lookup[identifier_key(identifier)] = row
     for label, aliases in CURATED.items():
         for identifier in aliases:
-            lookup.setdefault(identifier.casefold(), {"curated_label": label})
+            lookup.setdefault(identifier_key(identifier), {"curated_label": label})
     for row in bright:
-        lookup[f"hr {row['hr']}"] = {"bright_catalog": True}
+        lookup[identifier_key(f"HR {row['hr']}")] = {"bright_catalog": True}
 
     identifiers = sorted({identifier for identifier in lookup})
     # Query case-sensitive identifiers in their source spelling.
@@ -252,22 +406,24 @@ def query_simbad_candidates(wgsn: list[dict[str, str]], bright: list[dict[str, A
     for row in wgsn:
         for identifier in (row.get("designation", ""), row.get("simbad_spelling", "")):
             if identifier:
-                source_spellings[identifier.casefold()] = identifier
+                source_spellings[identifier_key(identifier)] = identifier
         if row.get("hip"):
             hip = f"HIP {row['hip'].replace(',', '')}"
-            source_spellings[hip.casefold()] = hip
+            source_spellings[identifier_key(hip)] = hip
     for aliases in CURATED.values():
         for identifier in aliases:
-            source_spellings[identifier.casefold()] = identifier
+            source_spellings[identifier_key(identifier)] = identifier
     for row in bright:
         identifier = f"HR {row['hr']}"
-        source_spellings[identifier.casefold()] = identifier
+        source_spellings[identifier_key(identifier)] = identifier
 
     for batch in chunks([source_spellings[i] for i in identifiers], 120):
+        # WGSN and Bright Star identifiers are stars by construction; curated
+        # identifiers may point at compact objects SIMBAD does not type as
+        # stellar (e.g. Sgr A*), so no stellar object-type join here.
         query = f"""
             SELECT {base_columns()},i.id
             FROM ident AS i JOIN basic AS b ON i.oidref=b.oid
-            JOIN otypes AS stellar ON b.oid=stellar.oidref AND stellar.otype='*'
             LEFT OUTER JOIN flux AS v ON b.oid=v.oidref AND v.filter='V'
             WHERE i.id IN ({','.join(adql_string(i) for i in batch)})
               AND b.otype NOT IN ('Pl','Pl?')
@@ -277,7 +433,7 @@ def query_simbad_candidates(wgsn: list[dict[str, str]], bright: list[dict[str, A
             matched_id = str(values[12])
             oid = int(item["oid"])
             current = objects.setdefault(oid, item | {"reasons": set()})
-            match = lookup.get(matched_id.casefold(), {})
+            match = lookup.get(identifier_key(matched_id), {})
             if match.get("proper_names"):
                 current.setdefault("official_names", set()).add(match["proper_names"])
                 current["reasons"].add("official_iau_name")
@@ -413,12 +569,12 @@ def choose_display_name(item: dict[str, Any], identifiers: list[str]) -> tuple[s
     official = official_names[0] if official_names else ""
     if official:
         return official, official
-    named = first_matching(identifiers, [r"NAME\s+(.+)"])
-    if named:
-        return named, ""
     curated_names = sorted(item.get("curated_names", []))
     if curated_names:
         return curated_names[0], ""
+    named = first_matching(identifiers, [r"NAME\s+(.+)"])
+    if named:
+        return named, ""
     bayer = first_matching(identifiers, [r"([a-zA-Z]+\s+[A-Z][a-z]{2}(?:\s+[A-Z])?)"])
     if bayer:
         return bayer, ""
@@ -446,15 +602,23 @@ def rounded(value: float | None, digits: int = 8) -> float | str:
     return "" if value is None else round(value, digits)
 
 
-def classify_stellar_category(spectral_type: str, object_type: str, main_id: str) -> str:
-    spectral = spectral_type.strip().upper()
+def classify_stellar_category(spectral_type: str, object_type: str, main_id: str, identifiers: list[str] | None = None) -> str:
+    override = alias_lookup(CATEGORY_OVERRIDES, main_id, identifiers or [])
+    if override:
+        return override
+    # Composite types such as "M1.5Iab+B2Vn" (Antares) describe several
+    # components; classify by the primary one so the companion's "V" does not
+    # turn a supergiant into a dwarf.
+    spectral = re.split(r"\+(?=[OBAFGKMLTYDWC])", spectral_type.strip().upper())[0].strip()
     object_code = object_type.strip().upper()
     identifier = main_id.strip().upper()
     if object_code in {"BH", "XBH"} or "BLACK HOLE" in object_code or "BLACK HOLE" in identifier:
         return "black_hole"
     if object_code in {"PSR", "PULSAR", "NS"} or "PULSAR" in object_code or identifier.startswith(("PSR ", "PULSAR ")):
         return "neutron_star"
-    if re.match(r"^D[A-Z0-9]", spectral) or object_code.startswith("WD"):
+    # White-dwarf classes are DA/DB/DO/DQ/DZ/DC/DX (plus mixtures); "dM6" is
+    # legacy notation for a dwarf M star, not a degenerate.
+    if re.match(r"^D[ABOQZCX]", spectral) or object_code.startswith("WD"):
         return "white_dwarf"
     if re.match(r"^[LTY][0-9]", spectral) or object_code.startswith("BD"):
         return "brown_dwarf"
@@ -507,7 +671,10 @@ def build_rows(objects: dict[int, dict[str, Any]], gaia: dict[str, dict[str, Any
                 notes.append("Gaia astrometry rejected: low SNR, RUWE > 1.4, duplicate, or non-positive parallax")
 
         distance_pc = 1000.0 / parallax if parallax and parallax > 0 and (gaia_reliable or simbad_reliable) else None
-        fallback = LITERATURE_DISTANCE_PC.get(str(item.get("main_id")))
+        fallback = literature_distance(str(item.get("main_id")), identifiers)
+        if fallback and fallback[3] and distance_pc is not None:
+            notes.append("Catalog parallax deliberately overridden by literature distance")
+            distance_pc = None
         if distance_pc is None and item.get("distance_pc"):
             distance_pc = safe_float(item["distance_pc"])
             source, quality = "Literature", "uncertain_literature_distance"
@@ -547,8 +714,12 @@ def build_rows(objects: dict[int, dict[str, Any]], gaia: dict[str, dict[str, Any
 
         spectral_type = item.get("spectral_type") or ""
         stellar_category = classify_stellar_category(
-            spectral_type, str(item.get("object_type") or ""), str(item.get("main_id") or "")
+            spectral_type, str(item.get("object_type") or ""), str(item.get("main_id") or ""), identifiers
         )
+        locality = alias_lookup(LOCALITY_OVERRIDES, str(item.get("main_id") or ""), identifiers) or item.get("locality") or DEFAULT_LOCALITY
+        if distance_ly is not None and distance_ly > EXTRAGALACTIC_LY and locality == DEFAULT_LOCALITY:
+            locality = "Beyond the Milky Way (host not recorded)"
+            notes.append("Distance exceeds the Milky Way's extent; host galaxy not curated")
         result.append({
             "display_name": display, "official_iau_name": official,
             "simbad_main_id": item["main_id"], "gaia_dr3_source_id": source_id,
@@ -566,7 +737,7 @@ def build_rows(objects: dict[int, dict[str, Any]], gaia: dict[str, dict[str, Any
             "r_ly": rounded(distance_ly, 6), "phi_deg": rounded(ra),
             "theta_deg": rounded(90.0 - dec if dec is not None else None),
             "apparent_magnitude": rounded(vmag, 3), "spectral_type": spectral_type,
-            "stellar_category": stellar_category,
+            "stellar_category": stellar_category, "locality": locality,
             "astrometry_source": source, "distance_quality_flag": quality,
             "selection_reason": " | ".join(sorted(reasons)), "fame_score": fame,
             "notes": "; ".join(notes),
@@ -592,8 +763,9 @@ def write_outputs(rows: list[dict[str, Any]], output_dir: Path, metadata: dict[s
             "dec": row["dec_deg"], "distanceLy": row["distance_ly"],
             "x": row["x_ly"], "y": row["y_ly"], "z": row["z_ly"],
             "magnitude": row["apparent_magnitude"], "spectralType": row["spectral_type"],
-            "category": row["stellar_category"],
+            "category": row["stellar_category"], "locality": row["locality"],
             "astrometrySource": row["astrometry_source"], "distanceQuality": row["distance_quality_flag"],
+            "distanceNote": row["notes"] if row["astrometry_source"] == "Literature" else "",
             "selectionReason": row["selection_reason"], "fameScore": row["fame_score"],
         })
     payload = "// Generated by scripts/build_catalog.py; do not edit manually.\n"
@@ -628,7 +800,8 @@ def main() -> None:
         },
         "rowSemantics": "One SIMBAD object per resolved row; resolved components remain separate. Unresolved WGSN and literature-only exceptions are explicitly flagged.",
         "coordinateFrame": "Sun-centered ICRS equatorial Cartesian; X=RA0/Dec0, Y=RA90/Dec0, Z=Dec+90.",
-        "distanceRule": f"Positive parallax with SNR >= {MIN_PARALLAX_SNR:g}; Gaia also requires RUWE <= 1.4 and non-duplicated source.",
+        "distanceRule": f"Positive parallax with SNR >= {MIN_PARALLAX_SNR:g}; Gaia also requires RUWE <= 1.4 and non-duplicated source. Curated literature distances are recorded per row in notes.",
+        "localityRule": f"'{DEFAULT_LOCALITY}' unless curated; positioned rows beyond {EXTRAGALACTIC_LY:g} ly without a curated host are flagged.",
         "sources": {"wgsn": WGSN_URL, "brightStarCatalog": VIZIER_TAP_URL, "simbadTap": SIMBAD_TAP_URL, "gaiaTap": GAIA_TAP_URL},
         "wgsnCandidateCount": len(wgsn), "brightCandidateCount": len(bright),
         "simbadNamedCandidateCount": simbad_named_count, "catalogRowCount": len(rows),

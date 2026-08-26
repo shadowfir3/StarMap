@@ -7,6 +7,11 @@
   const stars = Array.isArray(window.STAR_CATALOG) ? window.STAR_CATALOG : [];
   const meta = window.STAR_CATALOG_META || {};
   const typeDescriptions = window.STAR_TYPE_DESCRIPTIONS || {};
+  const NEBULA_COLOR = [0.85, 0.6, 1];
+  const NEBULA_MIN_HALF_PX = 11;
+  const nebulae = (Array.isArray(window.NEBULA_CATALOG) ? window.NEBULA_CATALOG : []).map(item => Object.assign(item, {
+    category:"nebula", isNebula:true, spectralType:"", fameScore:120, typeKey:`nebula_${item.kind}`, screen:null,
+  }));
   const solSearchObject = Object.freeze({
     name:"Sol", simbadId:"Solar System origin", hipId:"", hdId:"", gaiaId:"",
     x:0, y:0, z:0, distanceLy:0, spectralType:"G2V", category:"yellow_dwarf",
@@ -25,6 +30,9 @@
     name: document.querySelector("#star-name"), type: document.querySelector("#star-type"),
     distance: document.querySelector("#star-distance"), position: document.querySelector("#star-position"),
     source: document.querySelector("#star-source"), range: document.querySelector("#range-value"),
+    locality: document.querySelector("#star-locality"), image: document.querySelector("#object-image"),
+    imageImg: document.querySelector("#object-image-img"), imageCredit: document.querySelector("#object-image-credit"),
+    typeInfoEyebrow: document.querySelector("#type-info-eyebrow"),
     visible: document.querySelector("#visible-count"), grid: document.querySelector("#grid-value"), fill: document.querySelector("#scale-fill"),
     labels: document.querySelector("#labels"), summary: document.querySelector("#catalog-summary"),
     error: document.querySelector("#error-message"),
@@ -66,6 +74,7 @@
   let blendFrame = 0;
   let solDrawAlpha = 1;
   let visibleStars = [];
+  let visibleNebulae = [];
   let needsRender = true;
   let searchMatches = [];
   let activeSearchIndex = -1;
@@ -129,6 +138,62 @@
   };
   const buffers = { position: gl.createBuffer(), color: gl.createBuffer(), size: gl.createBuffer() };
 
+  // Nebulae are drawn as screen-aligned textured quads.  The quad corners are
+  // computed in normalised device coordinates on the CPU from the projected
+  // centre and the desired pixel size, so the same path serves the
+  // orthographic map and the perspective observation view.
+  const spriteVertexShader = `
+    attribute vec2 a_ndc;
+    attribute vec2 a_uv;
+    varying vec2 v_uv;
+    void main() { gl_Position = vec4(a_ndc, 0.0, 1.0); v_uv = a_uv; }
+  `;
+  const spriteFragmentShader = `
+    precision mediump float;
+    uniform sampler2D u_texture;
+    uniform float u_alpha;
+    varying vec2 v_uv;
+    void main() {
+      vec4 color = texture2D(u_texture, v_uv);
+      vec2 p = v_uv * 2.0 - 1.0;
+      float fade = 1.0 - smoothstep(0.55, 1.0, length(p));
+      float a = u_alpha * fade;
+      gl_FragColor = vec4(color.rgb * a, a);
+    }
+  `;
+  const spriteProgram = gl.createProgram();
+  gl.attachShader(spriteProgram, compile(gl.VERTEX_SHADER, spriteVertexShader));
+  gl.attachShader(spriteProgram, compile(gl.FRAGMENT_SHADER, spriteFragmentShader));
+  gl.linkProgram(spriteProgram);
+  if (!gl.getProgramParameter(spriteProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(spriteProgram));
+  const spriteLocations = {
+    ndc: gl.getAttribLocation(spriteProgram, "a_ndc"), uv: gl.getAttribLocation(spriteProgram, "a_uv"),
+    texture: gl.getUniformLocation(spriteProgram, "u_texture"), alpha: gl.getUniformLocation(spriteProgram, "u_alpha"),
+  };
+  const spriteBuffers = { ndc: gl.createBuffer(), uv: gl.createBuffer() };
+  const spriteTextures = new Map();
+
+  function spriteTexture(nebula) {
+    let entry = spriteTextures.get(nebula);
+    if (entry) return entry.ready ? entry.texture : null;
+    entry = { texture: gl.createTexture(), ready: false };
+    spriteTextures.set(nebula, entry);
+    const image = new Image();
+    image.onload = () => {
+      gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      entry.ready = true;
+      requestRender();
+    };
+    image.src = nebula.image?.dataUri || "";
+    return null;
+  }
+  nebulae.forEach(spriteTexture);
+
   function normalize(v) { const n = Math.hypot(...v) || 1; return v.map(x => x / n); }
   function subtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
   function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
@@ -182,6 +247,42 @@
     return ({ O:[0.58,0.69,1], B:[0.65,0.76,1], A:[0.82,0.87,1], F:[0.96,0.95,1],
       G:[1,0.91,0.65], K:[1,0.72,0.4], M:[1,0.34,0.22], D:[1,1,1],
       L:[0.75,0.28,0.16], T:[0.55,0.32,0.48], Y:[0.48,0.28,0.38] })[letter] || [0.78,0.88,1];
+  }
+
+  const CATEGORY_COLORS = { black_hole: [0.6, 0.7, 0.82], neutron_star: [0.78, 0.6, 1] };
+
+  function objectColor(object) {
+    if (object.isNebula) return NEBULA_COLOR;
+    if (!object.spectralType && CATEGORY_COLORS[object.category]) return CATEGORY_COLORS[object.category];
+    return spectralColor(object.spectralType);
+  }
+
+  function spriteHalfSize(nebula, distanceFromObserver, blend) {
+    const mapHalf = (nebula.sizeLy / 2) * (canvas.clientHeight / (2 * radius * 1.08));
+    let half = mapHalf;
+    if (blend > 0) {
+      const fov = OBSERVE_START_FOV + (OBSERVE_FOV - OBSERVE_START_FOV) * blend;
+      const focal = (canvas.clientHeight / 2) / Math.tan(fov / 2);
+      const skyHalf = distanceFromObserver > 1e-6 ? ((nebula.sizeLy / 2) / distanceFromObserver) * focal : canvas.clientHeight;
+      half = mapHalf * (1 - blend) + skyHalf * blend;
+    }
+    return Math.max(NEBULA_MIN_HALF_PX, Math.min(canvas.clientHeight * 0.45, half));
+  }
+
+  function drawSprite(nebula, screen, halfW, halfH, alpha) {
+    const texture = spriteTexture(nebula);
+    if (!texture) return;
+    const width = canvas.clientWidth, height = canvas.clientHeight;
+    const cx = screen.x / width * 2 - 1, cy = 1 - screen.y / height * 2;
+    const dx = halfW / width * 2, dy = halfH / height * 2;
+    gl.useProgram(spriteProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(spriteLocations.texture, 0);
+    gl.uniform1f(spriteLocations.alpha, alpha);
+    bindAttribute(spriteBuffers.ndc, spriteLocations.ndc, [cx-dx,cy+dy, cx+dx,cy+dy, cx-dx,cy-dy, cx-dx,cy-dy, cx+dx,cy+dy, cx+dx,cy-dy], 2);
+    bindAttribute(spriteBuffers.uv, spriteLocations.uv, [0,0, 1,0, 0,1, 0,1, 1,0, 1,1], 2);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
   function gridStep() {
@@ -307,8 +408,16 @@
 
   function updateLabels() {
     ui.labels.replaceChildren();
-    const labeled = visibleStars.filter(star => star === selected || star.fameScore >= 100)
-      .sort((a,b) => (b === selected) - (a === selected) || b.fameScore - a.fameScore).slice(0, 24);
+    if (selected?.isNebula && selected.screen) {
+      const ring = document.createElement("span");
+      ring.className = "nebula-ring";
+      const diameter = selected.screen.half * 2 + 10;
+      ring.style.left = `${selected.screen.x}px`; ring.style.top = `${selected.screen.y}px`;
+      ring.style.width = `${diameter}px`; ring.style.height = `${diameter}px`;
+      ui.labels.append(ring);
+    }
+    const labeled = [...visibleStars, ...visibleNebulae].filter(star => star === selected || star.fameScore >= 100)
+      .sort((a,b) => (b === selected) - (a === selected) || b.fameScore - a.fameScore).slice(0, 28);
     const occupied = [];
     for (const star of labeled) {
       const screen = project([star.x, star.y, star.z]);
@@ -316,9 +425,10 @@
       if (star !== selected && occupied.some(p => Math.hypot(p.x-screen.x,p.y-screen.y) < 55)) continue;
       occupied.push(screen);
       const label = document.createElement("span");
-      label.className = "star-label";
+      label.className = star.isNebula ? "star-label nebula-label" : "star-label";
       label.textContent = star.name;
-      label.style.left = `${screen.x}px`; label.style.top = `${screen.y}px`;
+      const lift = star.isNebula && star.screen ? Math.min(star.screen.half, 90) * .7 : 0;
+      label.style.left = `${screen.x}px`; label.style.top = `${screen.y - lift}px`;
       ui.labels.append(label);
     }
     if (displaySettings.solIndicator && selected && observeBlend === 0) {
@@ -407,11 +517,44 @@
       starAlphas.push(Math.min(1, alpha));
     }
 
+    // Nebulae: same visibility rules as stars (their extent counts toward the
+    // crop sphere), drawn additively as textured sprites scaled to physical
+    // size in the map and to apparent angular size in observation mode.
+    visibleNebulae = [];
+    const nebulaAlphas = [];
+    for (const nebula of nebulae) {
+      nebula.screen = null;
+      if (!enabledCategories.has("nebula")) continue;
+      let alpha = 0;
+      if (mapAlpha > 0 && Math.hypot(nebula.x-mapCenter[0], nebula.y-mapCenter[1], nebula.z-mapCenter[2]) <= radius + nebula.sizeLy / 2) alpha += mapAlpha;
+      if (blend > 0 && nebula !== observerStar) {
+        const distance = Math.hypot(nebula.x-observerPos[0], nebula.y-observerPos[1], nebula.z-observerPos[2]);
+        if (distance <= observeRange) alpha += blend * Math.min(1, (observeRange - distance) / fadeSpan);
+      }
+      if (alpha < 0.02) continue;
+      visibleNebulae.push(nebula);
+      nebulaAlphas.push(Math.min(1, alpha));
+    }
+    gl.disable(gl.DEPTH_TEST);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    visibleNebulae.forEach((nebula, index) => {
+      const screen = project([nebula.x, nebula.y, nebula.z]);
+      if (!screen?.visible) return;
+      const distance = Math.hypot(nebula.x-observerPos[0], nebula.y-observerPos[1], nebula.z-observerPos[2]);
+      const half = spriteHalfSize(nebula, distance, blend);
+      const aspect = nebula.image?.width && nebula.image?.height ? nebula.image.width / nebula.image.height : 1;
+      nebula.screen = { x: screen.x, y: screen.y, half };
+      drawSprite(nebula, screen, aspect >= 1 ? half : half * aspect, aspect >= 1 ? half / aspect : half, nebulaAlphas[index] * (nebula === selected ? 1 : .9));
+    });
+    gl.useProgram(program);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enable(gl.DEPTH_TEST);
+
     const verticalPositions = [], verticalColors = [];
     if (displaySettings.normals !== "off" && mapAlpha > 0) {
       const normalAlpha = (displaySettings.normals === "prominent" ? .88 : .38) * mapAlpha;
-      for (const star of visibleStars) {
-        const color = spectralColor(star.spectralType);
+      for (const star of [...visibleStars, ...visibleNebulae]) {
+        const color = objectColor(star);
         if (Math.abs(star.z) > radius * .002) line([star.x,star.y,0],[star.x,star.y,star.z],[...color,normalAlpha],verticalPositions,verticalColors);
       }
     }
@@ -423,11 +566,11 @@
       const foot = focused ? [focused.x,focused.y,0] : [0,0,0];
       const contactPositions = [], contactColors = [];
       if (focused && Math.abs(focused.z) > radius*.002) {
-        line([focused.x,focused.y,focused.z],foot,[...spectralColor(focused.spectralType),contactAlpha],contactPositions,contactColors);
+        line([focused.x,focused.y,focused.z],foot,[...objectColor(focused),contactAlpha],contactPositions,contactColors);
       }
-      for (const star of visibleStars) {
+      for (const star of [...visibleStars, ...visibleNebulae]) {
         if (star === focused) continue;
-        const color = spectralColor(star.spectralType);
+        const color = objectColor(star);
         line(foot,[star.x,star.y,0],[...color,contactAlpha],contactPositions,contactColors);
       }
       drawGeometry(gl.LINES,contactPositions,contactColors);
@@ -450,7 +593,7 @@
     if (solDrawAlpha > 0.02) { positions.push(0,0,0); colors.push(1,.84,.35,solDrawAlpha); sizes.push(solPointSize()); }
     visibleStars.forEach((star, index) => {
       positions.push(star.x,star.y,star.z);
-      const color = spectralColor(star.spectralType);
+      const color = objectColor(star);
       const alpha = (star === selected ? 1 : .92) * starAlphas[index];
       colors.push(...color,alpha); sizes.push(star === selected ? starSize(star)+4 : starSize(star));
     });
@@ -459,7 +602,7 @@
     drawGeometry(gl.POINTS, positions, colors, sizes, true);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    ui.visible.textContent = String(visibleStars.length + (solDrawAlpha > 0.02 ? 1 : 0));
+    ui.visible.textContent = String(visibleStars.length + visibleNebulae.length + (solDrawAlpha > 0.02 ? 1 : 0));
     if (mode === "observe") {
       ui.grid.textContent = "45° sky sectors";
       ui.range.textContent = observeRange < 100 ? `${observeRange.toFixed(1)} ly` : `${Math.round(observeRange).toLocaleString()} ly`;
@@ -477,6 +620,7 @@
   function populateTypeInfo() {
     const description = typeDescriptions[currentTypeContext.category] || typeDescriptions.other;
     if (!description) return;
+    ui.typeInfoEyebrow.textContent = description.group === "nebula" ? "Nebula type" : "Stellar type";
     ui.typeInfoTitle.textContent = description.title;
     ui.typeInfoCode.textContent = `Catalog type · ${currentTypeContext.code || "unclassified"}`;
     ui.typeInfoSummary.textContent = description.summary;
@@ -512,20 +656,58 @@
     ui.typeInfoButton.setAttribute("aria-expanded","false");
   }
 
+  function formatLy(value, digits = 3) {
+    return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits });
+  }
+
+  function showObjectImage(nebula) {
+    const image = nebula.image;
+    if (!image?.dataUri) { ui.image.hidden = true; return; }
+    ui.imageImg.src = image.dataUri;
+    ui.imageImg.alt = `${nebula.name} — ${image.author || image.credit || "Wikimedia Commons"}`;
+    ui.imageCredit.replaceChildren();
+    const credit = document.createElement("span");
+    credit.textContent = `Image: ${image.author || image.credit || "see source"} · `;
+    const licenseLink = document.createElement("a");
+    licenseLink.textContent = image.license || "licence";
+    licenseLink.href = image.licenseUrl || image.pageUrl; licenseLink.target = "_blank"; licenseLink.rel = "noopener noreferrer license";
+    const separator = document.createTextNode(" · ");
+    const sourceLink = document.createElement("a");
+    sourceLink.textContent = "Wikimedia Commons"; sourceLink.href = image.pageUrl; sourceLink.target = "_blank"; sourceLink.rel = "noopener noreferrer";
+    ui.imageCredit.append(credit, licenseLink, separator, sourceLink);
+    ui.image.hidden = false;
+  }
+
   function selectStar(star) {
     selected = star;
+    ui.image.hidden = true;
     if (!star) {
       ui.name.textContent = "Sol"; ui.type.textContent = "G2V · Yellow dwarf";
       ui.distance.textContent = "0.000 ly"; ui.position.textContent = "Origin";
+      ui.locality.textContent = "Milky Way";
       ui.source.textContent = "Reference frame origin";
       currentTypeContext = {category:"yellow_dwarf",code:"G2V"};
+    } else if (star.isNebula) {
+      ui.name.textContent = star.name;
+      ui.type.textContent = star.kindLabel;
+      const minus = Number(star.distanceErrMinusLy), plus = Number(star.distanceErrPlusLy);
+      const error = Math.abs(minus - plus) < 1e-6 ? `±${formatLy(plus, 0)}` : `+${formatLy(plus, 0)}/−${formatLy(minus, 0)}`;
+      ui.distance.textContent = `${formatLy(star.distanceLy, 0)} ly from Sol (${error} ly)`;
+      ui.position.textContent = `X ${star.x.toFixed(1)} · Y ${star.y.toFixed(1)} · Z ${star.z.toFixed(1)} ly`;
+      ui.locality.textContent = star.locality || "Milky Way";
+      const extent = `${formatLy(star.sizeLy, star.sizeLy < 10 ? 1 : 0)} ly across (${star.sizeArcmin}′)`;
+      ui.source.textContent = `${star.simbadId || "Curated position"} · ${extent}\nDistance: ${star.distanceQuality} · ${star.distanceSource}`;
+      currentTypeContext = {category:star.typeKey,code:star.kindLabel};
+      showObjectImage(star);
     } else {
       ui.name.textContent = star.name;
-      ui.type.textContent = star.spectralType || "Spectral type unavailable";
-      ui.distance.textContent = `${Number(star.distanceLy).toLocaleString(undefined,{maximumFractionDigits:3})} ly from Sol`;
+      ui.type.textContent = star.spectralType || typeDescriptions[star.category]?.title || "Spectral type unavailable";
+      ui.distance.textContent = `${formatLy(star.distanceLy)} ly from Sol`;
       ui.position.textContent = `X ${star.x.toFixed(2)} · Y ${star.y.toFixed(2)} · Z ${star.z.toFixed(2)} ly`;
+      ui.locality.textContent = star.locality || "Milky Way";
       const ids = [star.simbadId, star.gaiaId ? `Gaia DR3 ${star.gaiaId}` : ""].filter(Boolean).join(" · ");
-      ui.source.textContent = `${ids}\nAstrometry: ${star.astrometrySource} · ${star.distanceQuality}`;
+      const note = star.distanceNote ? `\n${star.distanceNote}` : "";
+      ui.source.textContent = `${ids}\nAstrometry: ${star.astrometrySource} · ${star.distanceQuality}${note}`;
       currentTypeContext = {category:star.category || "other",code:star.spectralType || "unclassified"};
     }
     ui.name.classList.toggle("long-name",ui.name.textContent.length > 22);
@@ -547,6 +729,16 @@
       if (!p?.visible) continue;
       const distance = Math.hypot(p.x-x,p.y-y);
       if (distance < bestDistance) { best = { star, point: [star.x,star.y,star.z] }; bestDistance = distance; }
+    }
+    if (best) return best;
+    // Stars and Sol win inside the pick radius; otherwise a nebula sprite is hit
+    // anywhere within its drawn extent (capped so huge sprites do not swallow clicks).
+    let bestScore = 1;
+    for (const nebula of visibleNebulae) {
+      if (!nebula.screen) continue;
+      const reach = Math.max(PICK_RADIUS_PX, Math.min(nebula.screen.half, 70));
+      const score = Math.hypot(nebula.screen.x-x, nebula.screen.y-y) / reach;
+      if (score <= bestScore) { best = { star: nebula, point: [nebula.x,nebula.y,nebula.z] }; bestScore = score; }
     }
     return best;
   }
@@ -766,9 +958,10 @@
 
   function searchScore(star, query) {
     const name = star.name.toLocaleLowerCase();
-    const id = `${star.simbadId || ""} ${star.hipId || ""} ${star.hdId || ""}`.toLocaleLowerCase();
-    if (name === query) return 0;
-    if (name.startsWith(query)) return 1;
+    const aliases = (star.aliases || []).map(alias => alias.toLocaleLowerCase());
+    const id = `${star.simbadId || ""} ${star.hipId || ""} ${star.hdId || ""} ${aliases.join(" ")}`.toLocaleLowerCase();
+    if (name === query || aliases.includes(query)) return 0;
+    if (name.startsWith(query) || aliases.some(alias => alias.startsWith(query))) return 1;
     if (name.split(/\s+/).some(word => word.startsWith(query))) return 2;
     if (name.includes(query)) return 3;
     if (id.includes(query)) return 4;
@@ -780,20 +973,23 @@
     ui.searchResults.replaceChildren();
     activeSearchIndex = -1;
     if (!query) { searchMatches=[]; return; }
-    searchMatches = [solSearchObject,...stars].map(star => ({star, score:searchScore(star,query)}))
+    searchMatches = [solSearchObject,...stars,...nebulae].map(star => ({star, score:searchScore(star,query)}))
       .filter(match => match.score < 99)
       .sort((a,b) => a.score-b.score || b.star.fameScore-a.star.fameScore || a.star.distanceLy-b.star.distanceLy)
       .slice(0, 9).map(match => match.star);
     if (!searchMatches.length) {
       const empty = document.createElement("p");
-      empty.className = "search-empty"; empty.textContent = "No positioned stars match that search.";
+      empty.className = "search-empty"; empty.textContent = "No positioned objects match that search.";
       ui.searchResults.append(empty); return;
     }
     searchMatches.forEach((star,index) => {
       const result = document.createElement("button");
       result.type = "button"; result.className = "search-result"; result.setAttribute("role","option");
       const name = document.createElement("span"); name.textContent = star.name;
-      const id = document.createElement("small"); id.textContent = star.isSol ? "Sun · coordinate origin" : (star.simbadId || (star.gaiaId ? `Gaia DR3 ${star.gaiaId}` : "Catalog object"));
+      const id = document.createElement("small");
+      id.textContent = star.isSol ? "Sun · coordinate origin"
+        : star.isNebula ? `${star.kindLabel}${star.simbadId ? ` · ${star.simbadId}` : ""}`
+        : (star.simbadId || (star.gaiaId ? `Gaia DR3 ${star.gaiaId}` : "Catalog object"));
       const distance = document.createElement("b"); distance.textContent = `${Number(star.distanceLy).toLocaleString(undefined,{maximumFractionDigits:1})} ly`;
       result.append(name,id,distance);
       result.addEventListener("click", () => chooseSearchResult(index));
@@ -821,6 +1017,7 @@
     counts[category] = (counts[category] || 0) + 1;
     return counts;
   },{});
+  categoryCounts.nebula = nebulae.length;
   document.querySelectorAll("[data-count]").forEach(item => { item.textContent = categoryCounts[item.dataset.count] || 0; });
 
   ui.searchButton.addEventListener("click", () => {
@@ -963,7 +1160,7 @@
   document.querySelector("#fullscreen-button").addEventListener("click", () => toggleFullscreen().catch(() => {}));
   document.addEventListener("fullscreenchange", requestRender);
 
-  ui.summary.textContent = `${meta.renderableRowCount ?? stars.length} positioned objects · snapshot ${(meta.generatedUtc || "unknown").slice(0,10)}`;
+  ui.summary.textContent = `${meta.renderableRowCount ?? stars.length} positioned stars · ${nebulae.length} imaged nebulae · snapshot ${(meta.generatedUtc || "unknown").slice(0,10)}`;
   if (!stars.length) {
     ui.error.hidden = false;
     ui.error.textContent = "The star catalog is missing. Run: python scripts/build_catalog.py";
