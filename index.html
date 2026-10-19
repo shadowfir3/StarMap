@@ -2,9 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Three-dimensional WebGL star map with Sol at the origin: positioned stars, famous objects and imaged nebulae out to the Galactic centre and the Magellanic Clouds.">
   <meta name="theme-color" content="#03070d">
-  <title>Solar Neighborhood · Star Map</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Star Map">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Star Map</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -39,9 +47,17 @@
 
     <header id="title-block">
       <p class="eyebrow">ICRS · SUN-CENTERED</p>
-      <h2>SOLAR<br>NEIGHBORHOOD</h2>
+      <h2>STAR MAP</h2>
       <p id="catalog-summary">Loading catalog…</p>
     </header>
+
+    <section id="star-list" aria-label="Nearest visible stars">
+      <button id="star-list-toggle" type="button" aria-expanded="false" aria-controls="star-list-body"><i class="chevron" aria-hidden="true"></i><span>Nearest stars</span></button>
+      <div id="star-list-body" hidden>
+        <p id="star-list-caption"></p>
+        <table><tbody id="star-list-rows"></tbody></table>
+      </div>
+    </section>
 
     <div id="tools">
       <div id="search-control" class="tool-control">
@@ -151,14 +167,16 @@
     </nav>
 
     <footer>
-      <div class="control"><i class="mouse drag"></i><span>Drag to rotate</span></div>
-      <div class="control"><i class="mouse wheel"></i><span>Wheel to scale</span></div>
-      <div class="control"><kbd>Shift</kbd><span>+ drag to pan</span></div>
-      <div class="control"><kbd>Space</kbd><span>observe mode</span></div>
-      <div class="control"><kbd>WASD</kbd><span>move on plane</span></div>
-      <div class="control"><kbd>Q E</kbd><span>move down / up</span></div>
-      <span class="divider"></span>
-      <span>Click for details · double-click to center</span>
+      <div class="control pointer-hint"><i class="mouse drag"></i><span>Drag to rotate</span></div>
+      <div class="control pointer-hint"><i class="mouse wheel"></i><span>Wheel to scale</span></div>
+      <div class="control pointer-hint"><kbd>Shift</kbd><span>+ drag to pan</span></div>
+      <div class="control pointer-hint"><kbd>Space</kbd><span>observe mode</span></div>
+      <div class="control pointer-hint"><kbd>WASD</kbd><span>move on plane</span></div>
+      <div class="control pointer-hint"><kbd>Q E</kbd><span>move down / up</span></div>
+      <span class="divider pointer-hint"></span>
+      <span class="pointer-hint">Click for details · double-click to center</span>
+      <span class="touch-hint">Drag to rotate · pinch to scale · two fingers to pan · tap for details · double-tap to center</span>
+      <span id="app-version" title="Star map version"></span>
     </footer>
     <div id="error-message" hidden></div>
   </main>

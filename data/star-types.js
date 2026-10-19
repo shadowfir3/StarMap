@@ -68,6 +68,13 @@ window.STAR_TYPE_DESCRIPTIONS = {
     sourceTitle: "Wikipedia · Stellar classification",
     sourceUrl: "https://en.wikipedia.org/wiki/Stellar_classification"
   },
+  other_unclassified: {
+    title: "Unclassified object",
+    summary: "SIMBAD records no spectral type for this object, so the map cannot assign it to a stellar family; it is positioned from its astrometry alone. A spectral type summarizes a star's observed spectrum and temperature.",
+    facts: ["Such entries are typically faint variable stars, cluster members or survey detections that carry a SIMBAD name but no published classification.", "Letter classes O–B–A–F–G–K–M are subdivided from 0 to 9; D denotes white-dwarf spectra."],
+    sourceTitle: "Wikipedia · Stellar classification",
+    sourceUrl: "https://en.wikipedia.org/wiki/Stellar_classification"
+  },
   // Nebula families for the imaged objects in data/nebulae.js (paraphrased from
   // the linked English Wikipedia articles, retrieved 2026-08-26).
   nebula_hii: {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedUtc": "2026-08-26T11:38:31Z",
+  "generatedUtc": "2026-10-19T16:34:31Z",
   "selectionRule": {
     "officialIauNames": true,
     "brightVLessThan": 4.0,
@@ -91,9 +91,9 @@
     "simbadTap": "https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
     "gaiaTap": "https://gea.esac.esa.int/tap-server/tap/sync"
   },
-  "wgsnCandidateCount": 626,
+  "wgsnCandidateCount": 652,
   "brightCandidateCount": 513,
-  "simbadNamedCandidateCount": 2526,
-  "catalogRowCount": 4478,
-  "renderableRowCount": 3153
+  "simbadNamedCandidateCount": 2537,
+  "catalogRowCount": 4509,
+  "renderableRowCount": 3174
 }

@@ -1,0 +1,30 @@
+{
+  "name": "Star Map",
+  "short_name": "Star Map",
+  "description": "Three-dimensional WebGL star map with Sol at the origin: positioned stars, famous objects and imaged nebulae out to the Galactic centre and the Magellanic Clouds.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#010307",
+  "theme_color": "#03070d",
+  "lang": "en",
+  "categories": [
+    "education",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

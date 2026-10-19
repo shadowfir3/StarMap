@@ -1,6 +1,12 @@
+// Application version, major.minor only.  Raise the minor number for new
+// features and the major number for changes that alter data formats, the
+// coordinate frame or established behaviour.  Shown in the lower-right corner.
+window.STAR_MAP_VERSION = "1.0";
+
 (() => {
   "use strict";
 
+  const APP_VERSION = window.STAR_MAP_VERSION;
   const canvas = document.querySelector("#star-map");
   const viewport = document.querySelector("#viewport");
   const gl = canvas.getContext("webgl", { alpha: false, antialias: true });
@@ -35,7 +41,11 @@
     typeInfoEyebrow: document.querySelector("#type-info-eyebrow"),
     visible: document.querySelector("#visible-count"), grid: document.querySelector("#grid-value"), fill: document.querySelector("#scale-fill"),
     labels: document.querySelector("#labels"), summary: document.querySelector("#catalog-summary"),
-    error: document.querySelector("#error-message"),
+    error: document.querySelector("#error-message"), version: document.querySelector("#app-version"),
+    scalePanel: document.querySelector("#scale-panel"), titleBlock: document.querySelector("#title-block"),
+    starList: document.querySelector("#star-list"), starListToggle: document.querySelector("#star-list-toggle"),
+    starListBody: document.querySelector("#star-list-body"), starListCaption: document.querySelector("#star-list-caption"),
+    starListRows: document.querySelector("#star-list-rows"),
     searchButton: document.querySelector("#search-button"), searchPanel: document.querySelector("#search-panel"),
     searchInput: document.querySelector("#star-search"), searchResults: document.querySelector("#search-results"),
     layersButton: document.querySelector("#layers-button"), layersPanel: document.querySelector("#layers-panel"),
@@ -48,6 +58,7 @@
     observeButton: document.querySelector("#observe-button"), visibilitySlider: document.querySelector("#visibility-slider"),
   };
 
+  ui.version.textContent = `V${APP_VERSION}`;
   if (!gl) {
     ui.error.hidden = false;
     ui.error.textContent = "WebGL is unavailable. Enable hardware acceleration or use a WebGL-capable browser.";
@@ -61,7 +72,14 @@
   let selected = null;
   let focused = null;
   let hovered = null;
-  let pointer = null;
+  const activePointers = new Map(); // pointerId -> current client position
+  let gesture = null; // { kind: "drag" | "pinch" | "idle", ... }
+  let lastPointerType = "mouse";
+  let lastTap = null;
+  let starListOpen = false; // the nearest-stars panel computes nothing while collapsed
+  let starListKey = "";
+  const STAR_LIST_ROW_PX = 23;
+  const STAR_LIST_MAX = 20;
   let viewProjection = new Float32Array(16);
   let mode = "map";
   let observeBlend = 0;
@@ -103,18 +121,27 @@
   const fragmentShader = `
     precision mediump float;
     uniform bool u_points;
+    uniform int u_style; // 0 = star: bright core and halo; 1 = black hole: dark disc inside a bright ring
     varying vec4 v_color;
     void main() {
-      if (u_points) {
-        vec2 p = gl_PointCoord * 2.0 - 1.0;
-        float d = dot(p, p);
-        if (d > 1.0) discard;
-        float core = 1.0 - smoothstep(0.02, 0.28, d);
-        float halo = 1.0 - smoothstep(0.15, 1.0, d);
-        gl_FragColor = vec4(v_color.rgb * (0.85 + core * 1.7), v_color.a * (halo * 0.72 + core));
-      } else {
-        gl_FragColor = v_color;
+      if (!u_points) { gl_FragColor = v_color; return; }
+      vec2 p = gl_PointCoord * 2.0 - 1.0;
+      float d = dot(p, p);
+      if (d > 1.0) discard;
+      if (u_style == 1) {
+        float r = sqrt(d);
+        float disc = 1.0 - smoothstep(0.36, 0.44, r);
+        float ring = smoothstep(0.38, 0.47, r) * (1.0 - smoothstep(0.56, 0.70, r));
+        float glow = (1.0 - smoothstep(0.55, 1.0, r)) * 0.3 * (1.0 - disc);
+        float beaming = 0.7 + 0.5 * clamp(-0.8 * p.x - 0.5 * p.y, -1.0, 1.0); // one side of the ring is brighter
+        float weight = disc + ring + glow;
+        vec3 color = (v_color.rgb * (1.1 + 0.7 * beaming) * ring + v_color.rgb * 0.5 * glow) / max(weight, 1e-3);
+        gl_FragColor = vec4(color, min(1.0, weight) * v_color.a);
+        return;
       }
+      float core = 1.0 - smoothstep(0.02, 0.28, d);
+      float halo = 1.0 - smoothstep(0.15, 1.0, d);
+      gl_FragColor = vec4(v_color.rgb * (0.85 + core * 1.7), v_color.a * (halo * 0.72 + core));
     }
   `;
 
@@ -135,6 +162,7 @@
     position: gl.getAttribLocation(program, "a_position"), color: gl.getAttribLocation(program, "a_color"),
     size: gl.getAttribLocation(program, "a_size"), matrix: gl.getUniformLocation(program, "u_matrix"),
     pixelRatio: gl.getUniformLocation(program, "u_pixelRatio"), points: gl.getUniformLocation(program, "u_points"),
+    style: gl.getUniformLocation(program, "u_style"),
   };
   const buffers = { position: gl.createBuffer(), color: gl.createBuffer(), size: gl.createBuffer() };
 
@@ -249,10 +277,12 @@
       L:[0.75,0.28,0.16], T:[0.55,0.32,0.48], Y:[0.48,0.28,0.38] })[letter] || [0.78,0.88,1];
   }
 
-  const CATEGORY_COLORS = { black_hole: [0.6, 0.7, 0.82], neutron_star: [0.78, 0.6, 1] };
+  const BLACK_HOLE_COLOR = [1, 0.76, 0.42]; // accretion-ring tint of the black-hole icon and its lines
+  const CATEGORY_COLORS = { black_hole: BLACK_HOLE_COLOR, neutron_star: [0.78, 0.6, 1] };
 
   function objectColor(object) {
     if (object.isNebula) return NEBULA_COLOR;
+    if (object.category === "black_hole") return BLACK_HOLE_COLOR; // SIMBAD's spectral type belongs to the companion
     if (!object.spectralType && CATEGORY_COLORS[object.category]) return CATEGORY_COLORS[object.category];
     return spectralColor(object.spectralType);
   }
@@ -298,7 +328,14 @@
     return Math.max(3.1, Math.min(10, 7.2 - (Number.isFinite(magnitude) ? magnitude * .48 : 2)));
   }
 
+  function blackHoleSize() {
+    if (displaySettings.starSize === "large") return 22;
+    if (displaySettings.starSize === "accurate") return 14;
+    return 17;
+  }
+
   function starSize(star) {
+    if (star.category === "black_hole") return blackHoleSize();
     const normal = normalStarSize(star);
     if (displaySettings.starSize === "large") return normal * 1.75;
     if (displaySettings.starSize !== "accurate") return normal;
@@ -323,12 +360,13 @@
     gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
   }
 
-  function drawGeometry(mode, positions, colors, sizes, points = false) {
+  function drawGeometry(mode, positions, colors, sizes, points = false, style = 0) {
     if (!positions.length) return;
     bindAttribute(buffers.position, locations.position, positions, 3);
     bindAttribute(buffers.color, locations.color, colors, 4);
     bindAttribute(buffers.size, locations.size, sizes || new Array(positions.length / 3).fill(1), 1);
     gl.uniform1i(locations.points, points ? 1 : 0);
+    gl.uniform1i(locations.style, style);
     gl.drawArrays(mode, 0, positions.length / 3);
   }
 
@@ -446,6 +484,68 @@
         }
       }
     }
+  }
+
+  // Nearest-stars panel: visible stars (and Sol) ordered by distance from the
+  // selected object, Sol when nothing is selected.  Rows are limited to what
+  // fits above the scale panel, at most STAR_LIST_MAX.
+  function positionStarList() {
+    if (!window.matchMedia?.("(max-width: 720px)").matches) { ui.starList.style.top = ""; return; }
+    const card = ui.identity.getBoundingClientRect();
+    const frame = viewport.getBoundingClientRect();
+    ui.starList.style.top = `${card.bottom - frame.top + 10}px`;
+  }
+
+  function starListLimit() {
+    let floor = ui.scalePanel.getBoundingClientRect().top;
+    const listTop = ui.starList.getBoundingClientRect().top;
+    if (ui.titleBlock.offsetParent !== null) {
+      const title = ui.titleBlock.getBoundingClientRect();
+      if (title.top > listTop) floor = Math.min(floor, title.top);
+    }
+    const start = ui.starListCaption.getBoundingClientRect().bottom;
+    return Math.max(1, Math.min(STAR_LIST_MAX, Math.floor((floor - 14 - start) / STAR_LIST_ROW_PX)));
+  }
+
+  function updateStarList(force = false) {
+    if (!starListOpen) return;
+    const reference = selected || solSearchObject;
+    const candidates = [];
+    for (const star of visibleStars) {
+      if (star === selected) continue;
+      candidates.push({ star, distance: Math.hypot(star.x-reference.x, star.y-reference.y, star.z-reference.z) });
+    }
+    if (selected && solDrawAlpha > 0.02) candidates.push({ star: solSearchObject, distance: Math.hypot(reference.x, reference.y, reference.z) });
+    candidates.sort((a, b) => a.distance - b.distance);
+    const shown = candidates.slice(0, starListLimit());
+    const key = `${reference.name}|${candidates.length}|${shown.map(item => `${item.star.name}:${item.distance.toFixed(4)}`).join("|")}`;
+    if (!force && key === starListKey) return;
+    starListKey = key;
+    ui.starListCaption.textContent = `From ${reference.name} · ${shown.length} of ${candidates.length} visible`;
+    ui.starListRows.replaceChildren(...shown.map(({ star, distance }) => {
+      const row = document.createElement("tr");
+      const swatchCell = document.createElement("td"); swatchCell.className = "swatch-cell";
+      const dot = document.createElement("i"); dot.className = "swatch";
+      const [r, g, b] = star.isSol ? [1, .84, .35] : objectColor(star);
+      dot.style.color = `rgb(${Math.round(r*255)}, ${Math.round(g*255)}, ${Math.round(b*255)})`;
+      swatchCell.append(dot);
+      const name = document.createElement("td"); name.className = "name"; name.textContent = star.name; name.title = star.name;
+      const dist = document.createElement("td"); dist.className = "dist";
+      dist.textContent = `${formatLy(distance, distance < 10 ? 2 : distance < 1000 ? 1 : 0)} ly`;
+      row.append(swatchCell, name, dist);
+      row.addEventListener("click", () => selectStar(star.isSol ? null : star));
+      row.addEventListener("dblclick", () => centerOnStar(star.isSol ? null : star, false));
+      return row;
+    }));
+  }
+
+  function setStarListOpen(open) {
+    starListOpen = open;
+    ui.starList.classList.toggle("open", open);
+    ui.starListBody.hidden = !open;
+    ui.starListToggle.setAttribute("aria-expanded", String(open));
+    if (open) { positionStarList(); updateStarList(true); }
+    else { starListKey = ""; ui.starListRows.replaceChildren(); }
   }
 
   function resize() {
@@ -590,17 +690,23 @@
     }
     solDrawAlpha = Math.min(1, solDrawAlpha);
     const positions = [], colors = [], sizes = [];
+    const holePositions = [], holeColors = [], holeSizes = [];
     if (solDrawAlpha > 0.02) { positions.push(0,0,0); colors.push(1,.84,.35,solDrawAlpha); sizes.push(solPointSize()); }
     visibleStars.forEach((star, index) => {
-      positions.push(star.x,star.y,star.z);
+      const hole = star.category === "black_hole";
       const color = objectColor(star);
       const alpha = (star === selected ? 1 : .92) * starAlphas[index];
-      colors.push(...color,alpha); sizes.push(star === selected ? starSize(star)+4 : starSize(star));
+      (hole ? holePositions : positions).push(star.x,star.y,star.z);
+      (hole ? holeColors : colors).push(...color,alpha);
+      (hole ? holeSizes : sizes).push(star === selected ? starSize(star)+4 : starSize(star));
     });
     gl.disable(gl.DEPTH_TEST);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     drawGeometry(gl.POINTS, positions, colors, sizes, true);
+    // Black holes are drawn last with ordinary alpha blending so that their
+    // dark disc occludes what lies behind it instead of adding light.
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    drawGeometry(gl.POINTS, holePositions, holeColors, holeSizes, true, 1);
 
     ui.visible.textContent = String(visibleStars.length + visibleNebulae.length + (solDrawAlpha > 0.02 ? 1 : 0));
     if (mode === "observe") {
@@ -613,6 +719,7 @@
       ui.fill.style.width = `${Math.max(4, Math.min(100, (Math.log10(radius)-Math.log10(1))/(Math.log10(50000))*100))}%`;
     }
     updateLabels();
+    if (starListOpen) updateStarList();
   }
 
   function requestRender() { if (!needsRender) { needsRender = true; requestAnimationFrame(render); } }
@@ -701,17 +808,22 @@
       showObjectImage(star);
     } else {
       ui.name.textContent = star.name;
-      ui.type.textContent = star.spectralType || typeDescriptions[star.category]?.title || "Spectral type unavailable";
+      const category = star.category || "other";
+      const title = typeDescriptions[category]?.title;
+      if (category === "black_hole" || category === "neutron_star") ui.type.textContent = star.spectralType ? `${title} · ${star.spectralType}` : title;
+      else if (star.spectralType) ui.type.textContent = star.spectralType;
+      else ui.type.textContent = category === "other" ? "No spectral type · unclassified" : title || "Spectral type unavailable";
       ui.distance.textContent = `${formatLy(star.distanceLy)} ly from Sol`;
       ui.position.textContent = `X ${star.x.toFixed(2)} · Y ${star.y.toFixed(2)} · Z ${star.z.toFixed(2)} ly`;
       ui.locality.textContent = star.locality || "Milky Way";
       const ids = [star.simbadId, star.gaiaId ? `Gaia DR3 ${star.gaiaId}` : ""].filter(Boolean).join(" · ");
       const note = star.distanceNote ? `\n${star.distanceNote}` : "";
       ui.source.textContent = `${ids}\nAstrometry: ${star.astrometrySource} · ${star.distanceQuality}${note}`;
-      currentTypeContext = {category:star.category || "other",code:star.spectralType || "unclassified"};
+      currentTypeContext = {category:category === "other" && !star.spectralType ? "other_unclassified" : category,code:star.spectralType || "unclassified"};
     }
     ui.name.classList.toggle("long-name",ui.name.textContent.length > 22);
     if (!ui.typeInfoPopup.hidden) { populateTypeInfo(); positionTypeInfoPopup(); }
+    positionStarList();
     requestRender();
   }
 
@@ -913,6 +1025,7 @@
   }
 
   async function toggleFullscreen() {
+    if (typeof viewport.requestFullscreen !== "function") return;
     if (document.fullscreenElement) await document.exitFullscreen(); else await viewport.requestFullscreen();
   }
 
@@ -1068,59 +1181,127 @@
     if (ui.typeInfoPopup.hidden) openTypeInfo(); else closeTypeInfo();
   });
   ui.typeInfoClose.addEventListener("click", closeTypeInfo);
+  ui.starListToggle.addEventListener("click", () => setStarListOpen(!starListOpen));
+  positionStarList();
+
+  // Pointer handling.  Mouse: drag rotates (map) or turns (observation),
+  // Shift+drag pans, wheel scales, dblclick centres.  Touch and pen: one
+  // finger drags, two fingers pinch to scale and pan with their midpoint, a
+  // tap selects and a double tap centres (iOS does not deliver dblclick).
+  function isTouchLike(type) { return type === "touch" || type === "pen"; }
+  function rotateBy(dx, dy) {
+    yaw -= dx*.006; pitch = Math.max(-1.42,Math.min(1.42,pitch+dy*.006));
+  }
+  function panBy(dx, dy) {
+    const scale = (radius*2.16)/canvas.clientHeight;
+    const right = [-Math.sin(yaw), Math.cos(yaw), 0];
+    const forwardPlane = [-Math.cos(yaw),-Math.sin(yaw),0];
+    target[0] += (-dx*right[0]+dy*forwardPlane[0])*scale;
+    target[1] += (-dx*right[1]+dy*forwardPlane[1])*scale;
+  }
+  function turnBy(dx, dy) {
+    const lookScale = OBSERVE_FOV / Math.max(1, canvas.clientHeight);
+    observeYaw += dx*lookScale;
+    observePitch = Math.max(-1.55,Math.min(1.55,observePitch+dy*lookScale));
+  }
+  function setRadius(value) {
+    radius = Math.max(1,Math.min(50000,value));
+  }
+  function setObserveRange(value) {
+    observeRange = Math.max(OBSERVE_MIN_RANGE,Math.min(OBSERVE_MAX_RANGE,value));
+    ui.visibilitySlider.value = String(distanceToSlider(observeRange));
+  }
+  function pinchGeometry() {
+    const [a, b] = activePointers.values();
+    return { distance: Math.max(1, Math.hypot(b.x-a.x, b.y-a.y)), x: (a.x+b.x)/2, y: (a.y+b.y)/2 };
+  }
+  function handleTap(event) {
+    const x = event.clientX, y = event.clientY;
+    if (isTouchLike(event.pointerType)) {
+      const now = performance.now();
+      if (lastTap && now-lastTap.time < 350 && Math.hypot(x-lastTap.x,y-lastTap.y) < 30) {
+        lastTap = null;
+        const hit = findPick(x,y);
+        if (hit) centerOnStar(hit.star,false); else pick(x,y);
+        return;
+      }
+      lastTap = { time:now, x, y };
+    }
+    pick(x,y);
+  }
 
   canvas.addEventListener("pointerdown", event => {
     cancelNavigationAnimation();
-    canvas.setPointerCapture(event.pointerId);
-    pointer = { id:event.pointerId, x:event.clientX, y:event.clientY, startX:event.clientX, startY:event.clientY, moved:false, pan:event.shiftKey };
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* synthetic pointers cannot be captured */ }
+    lastPointerType = event.pointerType || "mouse";
+    activePointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
     canvas.classList.add("dragging");
+    if (activePointers.size === 1) {
+      gesture = { kind:"drag", id:event.pointerId, startX:event.clientX, startY:event.clientY, moved:false,
+        pan:event.shiftKey, slop:isTouchLike(event.pointerType) ? 10 : 4 };
+    } else if (activePointers.size === 2) {
+      const start = pinchGeometry();
+      gesture = { kind:"pinch", distance:start.distance, x:start.x, y:start.y, radius, range:observeRange };
+    } else {
+      gesture = { kind:"idle" };
+    }
   });
   canvas.addEventListener("pointermove", event => {
-    if (!pointer) { updateHover(event.clientX,event.clientY); return; }
-    if (pointer.id !== event.pointerId) return;
-    const dx = event.clientX-pointer.x, dy = event.clientY-pointer.y;
-    pointer.x=event.clientX; pointer.y=event.clientY;
-    if (Math.hypot(event.clientX-pointer.startX,event.clientY-pointer.startY) > 4) pointer.moved=true;
-    if (mode === "observe") {
-      const lookScale = OBSERVE_FOV / Math.max(1, canvas.clientHeight);
-      observeYaw += dx*lookScale;
-      observePitch = Math.max(-1.55,Math.min(1.55,observePitch+dy*lookScale));
-    } else if (pointer.pan) {
-      const scale = (radius*2.16)/canvas.clientHeight;
-      const right = [-Math.sin(yaw), Math.cos(yaw), 0];
-      const forwardPlane = [-Math.cos(yaw),-Math.sin(yaw),0];
-      target[0] += (-dx*right[0]+dy*forwardPlane[0])*scale;
-      target[1] += (-dx*right[1]+dy*forwardPlane[1])*scale;
+    const tracked = activePointers.get(event.pointerId);
+    if (!tracked) {
+      if (!activePointers.size && !isTouchLike(event.pointerType)) updateHover(event.clientX,event.clientY);
+      return;
+    }
+    const dx = event.clientX-tracked.x, dy = event.clientY-tracked.y;
+    tracked.x = event.clientX; tracked.y = event.clientY;
+    if (gesture?.kind === "pinch") {
+      if (activePointers.size < 2) return;
+      const now = pinchGeometry();
+      const factor = gesture.distance / now.distance;
+      if (mode === "observe") { setObserveRange(gesture.range*factor); turnBy(now.x-gesture.x, now.y-gesture.y); }
+      else { setRadius(gesture.radius*factor); panBy(now.x-gesture.x, now.y-gesture.y); }
+      gesture.x = now.x; gesture.y = now.y;
+    } else if (gesture?.kind === "drag" && gesture.id === event.pointerId) {
+      if (Math.hypot(event.clientX-gesture.startX,event.clientY-gesture.startY) > gesture.slop) gesture.moved = true;
+      if (mode === "observe") turnBy(dx, dy);
+      else if (gesture.pan) panBy(dx, dy);
+      else rotateBy(dx, dy);
     } else {
-      yaw -= dx*.006; pitch = Math.max(-1.42,Math.min(1.42,pitch+dy*.006));
+      return;
     }
     requestRender();
   });
   function finishPointer(event) {
-    if (!pointer || pointer.id !== event.pointerId) return;
-    if (!pointer.moved) pick(event.clientX,event.clientY);
-    pointer=null; canvas.classList.remove("dragging");
+    if (!activePointers.delete(event.pointerId)) return;
+    if (gesture?.kind === "drag" && gesture.id === event.pointerId) {
+      if (!gesture.moved && event.type === "pointerup") handleTap(event);
+      gesture = null;
+    } else if (gesture?.kind === "pinch") {
+      gesture = { kind:"idle" }; // the remaining finger does nothing until lifted
+    }
+    if (!activePointers.size) { gesture = null; canvas.classList.remove("dragging"); }
   }
   canvas.addEventListener("pointerup", finishPointer);
   canvas.addEventListener("pointercancel", finishPointer);
   canvas.addEventListener("pointerleave", () => {
-    if (!pointer) { hovered=null; canvas.classList.remove("targetable"); }
+    if (!activePointers.size) { hovered=null; canvas.classList.remove("targetable"); }
   });
   canvas.addEventListener("dblclick", event => {
     event.preventDefault();
+    if (isTouchLike(lastPointerType)) return; // double taps are handled in handleTap
     const hit = findPick(event.clientX,event.clientY);
     if (hit) centerOnStar(hit.star, false);
   });
+  canvas.addEventListener("contextmenu", event => event.preventDefault());
   canvas.addEventListener("wheel", event => {
     event.preventDefault();
     if (mode === "observe") {
-      observeRange = Math.max(OBSERVE_MIN_RANGE,Math.min(OBSERVE_MAX_RANGE,observeRange*Math.exp(event.deltaY*.0012)));
-      ui.visibilitySlider.value = String(distanceToSlider(observeRange));
+      setObserveRange(observeRange*Math.exp(event.deltaY*.0012));
       requestRender();
       return;
     }
     cancelNavigationAnimation();
-    radius = Math.max(1,Math.min(50000,radius*Math.exp(event.deltaY*.0012)));
+    setRadius(radius*Math.exp(event.deltaY*.0012));
     requestRender();
   }, { passive:false });
   window.addEventListener("keydown", event => {
@@ -1150,6 +1331,7 @@
   window.addEventListener("resize", () => {
     requestRender();
     if (!ui.typeInfoPopup.hidden) positionTypeInfoPopup();
+    positionStarList();
   });
   ui.observeButton.addEventListener("click", () => setObserveMode(mode !== "observe"));
   ui.visibilitySlider.addEventListener("input", () => {
@@ -1157,7 +1339,13 @@
     requestRender();
   });
   document.querySelector("#reset-button").addEventListener("click", reset);
-  document.querySelector("#fullscreen-button").addEventListener("click", () => toggleFullscreen().catch(() => {}));
+  const fullscreenButton = document.querySelector("#fullscreen-button");
+  const standaloneDisplay = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  if (typeof viewport.requestFullscreen !== "function" || standaloneDisplay) fullscreenButton.hidden = true; // iPhone has no Fullscreen API; an installed app is already full screen
+  fullscreenButton.addEventListener("click", () => toggleFullscreen().catch(() => {}));
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
   document.addEventListener("fullscreenchange", requestRender);
 
   ui.summary.textContent = `${meta.renderableRowCount ?? stars.length} positioned stars · ${nebulae.length} imaged nebulae · snapshot ${(meta.generatedUtc || "unknown").slice(0,10)}`;
