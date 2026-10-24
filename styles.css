@@ -354,6 +354,13 @@ dd { margin: 0; color: #cde2ef; text-align: right; }
 #settings-panel label:has(input:checked) { color: #d9f3ff; border-color: rgba(109,217,255,.34); background: rgba(71,153,188,.09); }
 #settings-panel input { width: 11px; height: 11px; margin: 0; accent-color: #67ceef; }
 #settings-panel fieldset:last-child { grid-template-columns: 1fr; }
+#settings-defaults { padding: 4px 7px; border: 0; color: #6dd9ff; background: none; font-size: 9px; }
+#settings-panel fieldset.two { grid-template-columns: repeat(2, 1fr); }
+#settings-panel .slider-row { display: grid; grid-template-columns: auto 1fr 36px; gap: 9px; cursor: default; }
+#settings-panel .slider-row input[type="range"] { width: 100%; height: 14px; margin: 0; padding: 0; background: none; accent-color: #67ceef; cursor: pointer; }
+#settings-panel .slider-row output { color: #7391a2; font: 9px ui-monospace, Consolas, monospace; text-align: right; }
+#settings-panel .slider-row:has(input:disabled) { opacity: .4; }
+#settings-panel .slider-row:has(input:disabled) input { cursor: default; }
 #settings-panel fieldset:has(input[type="checkbox"]) { grid-template-columns: 1fr; }
 
 .sol-distance-label {

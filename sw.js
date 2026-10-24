@@ -2,7 +2,7 @@
 // install and served cache-first afterwards, so an installed home-screen app
 // starts without a network connection.  Increment CACHE_VERSION whenever any
 // precached file changes; the new worker replaces the old cache on activation.
-const CACHE_VERSION = "starmap-2026-10-17";
+const CACHE_VERSION = "starmap-2026-10-24b";
 const PRECACHE_URLS = [
   "./",
   "index.html",
@@ -10,6 +10,7 @@ const PRECACHE_URLS = [
   "app.js",
   "data/stars.js",
   "data/nebulae.js",
+  "data/galaxy.js",
   "data/star-types.js",
   "manifest.json",
   "icons/icon-180.png",

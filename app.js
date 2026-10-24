@@ -1,7 +1,7 @@
 // Application version, major.minor only.  Raise the minor number for new
 // features and the major number for changes that alter data formats, the
 // coordinate frame or established behaviour.  Shown in the lower-right corner.
-window.STAR_MAP_VERSION = "1.0";
+window.STAR_MAP_VERSION = "2.0";
 
 (() => {
   "use strict";
@@ -13,6 +13,7 @@ window.STAR_MAP_VERSION = "1.0";
   const stars = Array.isArray(window.STAR_CATALOG) ? window.STAR_CATALOG : [];
   const meta = window.STAR_CATALOG_META || {};
   const typeDescriptions = window.STAR_TYPE_DESCRIPTIONS || {};
+  const galaxyImage = window.GALAXY_IMAGE || null;
   const NEBULA_COLOR = [0.85, 0.6, 1];
   const NEBULA_MIN_HALF_PX = 11;
   const nebulae = (Array.isArray(window.NEBULA_CATALOG) ? window.NEBULA_CATALOG : []).map(item => Object.assign(item, {
@@ -56,6 +57,10 @@ window.STAR_MAP_VERSION = "1.0";
     typeInfoSummary: document.querySelector("#type-info-summary"), typeInfoFacts: document.querySelector("#type-info-facts"),
     typeInfoSources: document.querySelector("#type-info-sources"),
     observeButton: document.querySelector("#observe-button"), visibilitySlider: document.querySelector("#visibility-slider"),
+    contactLinesSetting: document.querySelector("#contact-lines-setting"), contactTransparency: document.querySelector("#contact-transparency"),
+    contactTransparencyValue: document.querySelector("#contact-transparency-value"), solIndicatorSetting: document.querySelector("#sol-indicator-setting"),
+    cropSphereSetting: document.querySelector("#crop-sphere-setting"), galaxySetting: document.querySelector("#galaxy-setting"),
+    settingsDefaults: document.querySelector("#settings-defaults"), frameEyebrow: document.querySelector("#frame-eyebrow"),
   };
 
   ui.version.textContent = `V${APP_VERSION}`;
@@ -97,7 +102,30 @@ window.STAR_MAP_VERSION = "1.0";
   let searchMatches = [];
   let activeSearchIndex = -1;
   let currentTypeContext = { category:"yellow_dwarf", code:"G2V" };
-  const displaySettings = { grid:"light", normals:"light", contactLines:"normal", starSize:"large", solIndicator:true, cropSphere:true };
+  // Display settings persist per browser in localStorage.  Unknown or invalid
+  // stored values fall back to the defaults, so an old or edited entry cannot
+  // break the map.
+  const SETTINGS_KEY = "star-map.settings";
+  const SETTINGS_DEFAULTS = Object.freeze({ frame:"galactic", grid:"light", normals:"light", contactLines:true, contactTransparency:75,
+    starSize:"large", solIndicator:true, cropSphere:true, galaxy:true });
+  const SETTINGS_OPTIONS = { frame:["galactic","equatorial"], grid:["off","light","prominent"], normals:["off","light","prominent"],
+    starSize:["normal","large","accurate"] };
+  const SETTINGS_FLAGS = ["contactLines", "solIndicator", "cropSphere", "galaxy"];
+  function loadSettings() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+      const settings = {};
+      for (const [key, options] of Object.entries(SETTINGS_OPTIONS)) if (options.includes(stored[key])) settings[key] = stored[key];
+      for (const key of SETTINGS_FLAGS) if (typeof stored[key] === "boolean") settings[key] = stored[key];
+      const transparency = Number(stored.contactTransparency);
+      if (Number.isFinite(transparency)) settings.contactTransparency = Math.round(Math.max(0, Math.min(100, transparency)));
+      return settings;
+    } catch { return {}; }
+  }
+  function saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(displaySettings)); } catch { /* storage unavailable: private mode, quota, file:// in some browsers */ }
+  }
+  const displaySettings = Object.assign({}, SETTINGS_DEFAULTS, loadSettings());
   const movementKeys = new Set();
   let movementFrame = 0;
   let lastMovementTime = 0;
@@ -315,12 +343,163 @@ window.STAR_MAP_VERSION = "1.0";
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
+  // Reference frames.  The catalog is ICRS equatorial (X toward RA 0h, Z toward
+  // the north celestial pole).  GALACTIC_FROM_ICRS is the IAU 1958 Galactic
+  // system in J2000 as adopted in the Hipparcos Catalogue (ESA 1997, Vol. 1,
+  // Sect. 1.5.3): its rows are the Galactic X (toward the centre, l = 0°),
+  // Y (l = 90°) and Z (north Galactic pole, RA 192.85948°, Dec +27.12825°) axes
+  // in ICRS.  The "Galactic" frame setting rotates every displayed position by
+  // this matrix, so the grid plane becomes the Galactic plane; the catalog
+  // itself is never changed (object.icrs keeps the ICRS position).
+  const GALACTIC_FROM_ICRS = Object.freeze([
+    [-0.0548755604, -0.8734370902, -0.4838350155],
+    [ 0.4941094279, -0.4448296300,  0.7469822445],
+    [-0.8676661490, -0.1980763734,  0.4559837762],
+  ]);
+  const NORTH_GALACTIC_POLE = GALACTIC_FROM_ICRS[2];
+  function toGalactic(v) { return GALACTIC_FROM_ICRS.map(row => row[0]*v[0] + row[1]*v[1] + row[2]*v[2]); }
+  function fromGalactic(v) { return [0, 1, 2].map(i => GALACTIC_FROM_ICRS[0][i]*v[0] + GALACTIC_FROM_ICRS[1][i]*v[1] + GALACTIC_FROM_ICRS[2][i]*v[2]); }
+  function frameVector(icrsVector) { return displaySettings.frame === "galactic" ? toGalactic(icrsVector) : icrsVector; }
+  function defaultYaw() { return displaySettings.frame === "galactic" ? Math.PI * 5 / 4 : DEFAULT.yaw; } // Galactic centre toward the upper right
+  for (const object of stars) object.icrs = [object.x, object.y, object.z];
+  for (const object of nebulae) object.icrs = [object.x, object.y, object.z];
+
+  // Galaxy background.  The picture (data/galaxy.js, a face-on artist's
+  // impression seen from the north Galactic pole) is drawn as one textured quad
+  // on the plane through Sagittarius A* perpendicular to the north Galactic
+  // pole.  Its painted Sun is put on Sol by scaling the artist's Sun–centre
+  // distance to the catalog distance of Sgr A*; picture "up" from the Sun is
+  // Galactic longitude 0°, "left" is 90°.
+  const GALAXY_INTENSITY = 0.62;
+  const GALAXY_FADE_LY = [100, 20000]; // visibility radius over which the picture fades in (log scale)
+  const galaxyVertexShader = `
+    attribute vec3 a_position;
+    attribute vec2 a_uv;
+    uniform mat4 u_matrix;
+    varying vec2 v_uv;
+    void main() { gl_Position = u_matrix * vec4(a_position, 1.0); v_uv = a_uv; }
+  `;
+  const galaxyFragmentShader = `
+    precision mediump float;
+    uniform sampler2D u_texture;
+    uniform float u_alpha;
+    varying vec2 v_uv;
+    void main() {
+      vec3 color = texture2D(u_texture, v_uv).rgb;
+      vec2 p = abs(v_uv * 2.0 - 1.0);
+      float edge = 1.0 - smoothstep(0.9, 1.0, max(p.x, p.y)); // hide the square border of the picture
+      gl_FragColor = vec4(color * u_alpha * edge, 1.0);
+    }
+  `;
+  const galaxyProgram = gl.createProgram();
+  gl.attachShader(galaxyProgram, compile(gl.VERTEX_SHADER, galaxyVertexShader));
+  gl.attachShader(galaxyProgram, compile(gl.FRAGMENT_SHADER, galaxyFragmentShader));
+  gl.linkProgram(galaxyProgram);
+  if (!gl.getProgramParameter(galaxyProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(galaxyProgram));
+  const galaxyLocations = {
+    position: gl.getAttribLocation(galaxyProgram, "a_position"), uv: gl.getAttribLocation(galaxyProgram, "a_uv"),
+    matrix: gl.getUniformLocation(galaxyProgram, "u_matrix"), texture: gl.getUniformLocation(galaxyProgram, "u_texture"),
+    alpha: gl.getUniformLocation(galaxyProgram, "u_alpha"),
+  };
+  const galaxyBuffers = { position: gl.createBuffer(), uv: gl.createBuffer() };
+  const galacticCentre = stars.find(star => star.name === "Sagittarius A*") || null;
+  let galaxyTextureEntry = null;
+
+  function galaxyGeometry() {
+    const calibration = galaxyImage?.calibration;
+    if (!calibration || !galacticCentre || !galaxyImage.width) return null;
+    const centre = [galacticCentre.x, galacticCentre.y, galacticCentre.z];
+    const pole = frameVector(NORTH_GALACTIC_POLE);
+    const toSol = centre.map(value => -value);
+    const offPlane = toSol[0] * pole[0] + toSol[1] * pole[1] + toSol[2] * pole[2];
+    const inPlane = toSol.map((value, i) => value - offPlane * pole[i]);
+    const down = normalize(inPlane); // picture +y: from the centre toward the Sun
+    const right = cross(pole, down); // picture +x; longitude 90° lies to the left
+    const sunOffset = [calibration.sunPx[0] - calibration.centerPx[0], calibration.sunPx[1] - calibration.centerPx[1]];
+    const sunPx = Math.hypot(...sunOffset);
+    const lyPerPx = Math.hypot(...inPlane) / sunPx;
+    // Picture axes follow the measured centre→Sun pixel vector (0.16° off the
+    // pixel column), so the painted Sun lands exactly on Sol.
+    const axis = [sunOffset[0] / sunPx, sunOffset[1] / sunPx];
+    const corner = (px, py) => {
+      const dx = px - calibration.centerPx[0], dy = py - calibration.centerPx[1];
+      const along = dx * axis[0] + dy * axis[1], across = dx * axis[1] - dy * axis[0];
+      return centre.map((value, i) => value + across * lyPerPx * right[i] + along * lyPerPx * down[i]);
+    };
+    const w = galaxyImage.width, h = galaxyImage.height;
+    return {
+      positions: [...corner(0, 0), ...corner(w, 0), ...corner(0, h), ...corner(0, h), ...corner(w, 0), ...corner(w, h)],
+      uvs: [0,0, 1,0, 0,1, 0,1, 1,0, 1,1], lyPerPx,
+    };
+  }
+  let galaxyQuad = null; // computed by applyFrame() for the selected reference frame
+
+  function galaxyTexture() {
+    if (galaxyTextureEntry) return galaxyTextureEntry.ready ? galaxyTextureEntry.texture : null;
+    if (!galaxyImage?.dataUri || !galaxyQuad) return null;
+    galaxyTextureEntry = { texture: gl.createTexture(), ready: false };
+    const image = new Image();
+    image.onload = () => {
+      // Resample to a power-of-two square so that WebGL 1 can mipmap it: the
+      // picture is minified strongly at large radii.  Compact layouts get the
+      // smaller texture to spare memory.
+      const compact = window.matchMedia?.("(max-width: 720px)").matches;
+      const size = Math.min(compact ? 2048 : 4096, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+      const scratch = document.createElement("canvas");
+      scratch.width = size; scratch.height = size;
+      scratch.getContext("2d").drawImage(image, 0, 0, size, size);
+      gl.bindTexture(gl.TEXTURE_2D, galaxyTextureEntry.texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, scratch);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      const anisotropic = gl.getExtension("EXT_texture_filter_anisotropic");
+      if (anisotropic) gl.texParameterf(gl.TEXTURE_2D, anisotropic.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(anisotropic.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      galaxyTextureEntry.ready = true;
+      requestRender();
+    };
+    image.src = galaxyImage.dataUri;
+    return null;
+  }
+
+  function galaxyFade() {
+    // One texel spans about 37 ly, so the picture carries no structure in a
+    // small visibility sphere; it fades in logarithmically over GALAXY_FADE_LY.
+    const [from, to] = GALAXY_FADE_LY;
+    return Math.max(0, Math.min(1, (Math.log10(radius) - Math.log10(from)) / (Math.log10(to) - Math.log10(from))));
+  }
+
+  function drawGalaxy(alpha) {
+    const texture = galaxyTexture();
+    if (!texture || alpha <= 0.005) return;
+    gl.useProgram(galaxyProgram);
+    gl.uniformMatrix4fv(galaxyLocations.matrix, false, viewProjection);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(galaxyLocations.texture, 0);
+    gl.uniform1f(galaxyLocations.alpha, alpha * GALAXY_INTENSITY);
+    bindAttribute(galaxyBuffers.position, galaxyLocations.position, galaxyQuad.positions, 3);
+    bindAttribute(galaxyBuffers.uv, galaxyLocations.uv, galaxyQuad.uvs, 2);
+    gl.disable(gl.DEPTH_TEST);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.enable(gl.DEPTH_TEST);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(program);
+  }
+
   function gridStep() {
     if (radius <= 4) return 1;
     if (radius < 15) return 5;
     if (radius <= 60) return 10;
     if (radius <= 300) return 50;
-    return 100;
+    if (radius <= 600) return 100;
+    if (radius <= 3000) return 500;
+    if (radius <= 6000) return 1000;
+    if (radius <= 30000) return 5000;
+    return 10000;
   }
 
   function normalStarSize(star) {
@@ -568,7 +747,9 @@ window.STAR_MAP_VERSION = "1.0";
       const eyeDistance = Math.max(100, radius * 4);
       const direction = [Math.cos(pitch)*Math.cos(yaw), Math.cos(pitch)*Math.sin(yaw), Math.sin(pitch)];
       const eye = target.map((value, i) => value + direction[i] * eyeDistance);
-      viewProjection = multiply(ortho(-halfHeight*aspect,halfHeight*aspect,-halfHeight,halfHeight,-eyeDistance*2,eyeDistance*2), lookAt(eye,target,[0,0,1]));
+      // Depth range of ±8 eye distances: the Galactic plane is tilted 63° to
+      // the grid and must not be clipped where it leaves the view corners.
+      viewProjection = multiply(ortho(-halfHeight*aspect,halfHeight*aspect,-halfHeight,halfHeight,-eyeDistance*8,eyeDistance*8), lookAt(eye,target,[0,0,1]));
     } else {
       const fov = OBSERVE_START_FOV + (OBSERVE_FOV - OBSERVE_START_FOV) * blend;
       const eyeDistance = (radius * 1.08) / Math.tan(OBSERVE_START_FOV / 2) * (1 - blend);
@@ -590,6 +771,7 @@ window.STAR_MAP_VERSION = "1.0";
     gl.uniformMatrix4fv(locations.matrix, false, viewProjection);
     gl.uniform1f(locations.pixelRatio, dpr);
 
+    if (displaySettings.galaxy && mapAlpha > 0) drawGalaxy(mapAlpha * galaxyFade());
     if (mapAlpha > 0) {
       const grid = buildGrid(mapCenter);
       drawGeometry(gl.LINES, grid.positions, scaleAlpha(grid.colors, mapAlpha));
@@ -661,8 +843,8 @@ window.STAR_MAP_VERSION = "1.0";
     gl.disable(gl.DEPTH_TEST);
     drawGeometry(gl.LINES, verticalPositions, verticalColors);
 
-    if (displaySettings.contactLines !== "off" && mapAlpha > 0) {
-      const contactAlpha = (displaySettings.contactLines === "prominent" ? .88 : .38) * mapAlpha;
+    if (displaySettings.contactLines && displaySettings.contactTransparency < 100 && mapAlpha > 0) {
+      const contactAlpha = (1 - displaySettings.contactTransparency / 100) * mapAlpha;
       const foot = focused ? [focused.x,focused.y,0] : [0,0,0];
       const contactPositions = [], contactColors = [];
       if (focused && Math.abs(focused.z) > radius*.002) {
@@ -714,7 +896,7 @@ window.STAR_MAP_VERSION = "1.0";
       ui.range.textContent = observeRange < 100 ? `${observeRange.toFixed(1)} ly` : `${Math.round(observeRange).toLocaleString()} ly`;
     } else {
       const step = gridStep();
-      ui.grid.textContent = `${step} light-year${step === 1 ? "" : "s"}`;
+      ui.grid.textContent = `${step.toLocaleString()} light-year${step === 1 ? "" : "s"}`;
       ui.range.textContent = radius < 100 ? `${radius.toFixed(1)} ly` : `${Math.round(radius).toLocaleString()} ly`;
       ui.fill.style.width = `${Math.max(4, Math.min(100, (Math.log10(radius)-Math.log10(1))/(Math.log10(50000))*100))}%`;
     }
@@ -1021,7 +1203,7 @@ window.STAR_MAP_VERSION = "1.0";
     if (mode === "observe") setObserveMode(false, false);
     else if (observeBlend > 0) animateBlend(0, false);
     observeYaw = 0; observePitch = 0;
-    radius = DEFAULT.radius; yaw = DEFAULT.yaw; pitch = DEFAULT.pitch; target = [...DEFAULT.target]; focused = null; selectStar(null); requestRender();
+    radius = DEFAULT.radius; yaw = defaultYaw(); pitch = DEFAULT.pitch; target = [...DEFAULT.target]; focused = null; selectStar(null); requestRender();
   }
 
   async function toggleFullscreen() {
@@ -1155,24 +1337,78 @@ window.STAR_MAP_VERSION = "1.0";
     layerCheckboxes.forEach(input => { input.checked=true; enabledCategories.add(input.dataset.category); });
     requestRender();
   });
-  document.querySelectorAll('input[name="grid-strength"]').forEach(input => input.addEventListener("change", () => {
-    if (input.checked) { displaySettings.grid=input.value; requestRender(); }
-  }));
-  document.querySelectorAll('input[name="normal-strength"]').forEach(input => input.addEventListener("change", () => {
-    if (input.checked) { displaySettings.normals=input.value; requestRender(); }
-  }));
-  document.querySelectorAll('input[name="contact-lines"]').forEach(input => input.addEventListener("change", () => {
-    if (input.checked) { displaySettings.contactLines=input.value; requestRender(); }
-  }));
-  document.querySelectorAll('input[name="star-size"]').forEach(input => input.addEventListener("change", () => {
-    if (input.checked) { displaySettings.starSize=input.value; requestRender(); }
-  }));
-  document.querySelector("#sol-indicator-setting").addEventListener("change", event => {
-    displaySettings.solIndicator=event.target.checked; requestRender();
+  const SETTINGS_RADIOS = [["frame", "frame"], ["grid-strength", "grid"], ["normal-strength", "normals"], ["star-size", "starSize"]];
+  function applySettingsToControls() {
+    for (const [name, key] of SETTINGS_RADIOS) {
+      document.querySelectorAll(`input[name="${name}"]`).forEach(input => { input.checked = input.value === displaySettings[key]; });
+    }
+    ui.contactLinesSetting.checked = displaySettings.contactLines;
+    ui.contactTransparency.value = String(displaySettings.contactTransparency);
+    ui.contactTransparency.disabled = !displaySettings.contactLines;
+    ui.contactTransparencyValue.textContent = `${displaySettings.contactTransparency} %`;
+    ui.solIndicatorSetting.checked = displaySettings.solIndicator;
+    ui.cropSphereSetting.checked = displaySettings.cropSphere;
+    ui.galaxySetting.checked = displaySettings.galaxy;
+  }
+  function updateSetting(key, value) {
+    const previous = displaySettings[key];
+    displaySettings[key] = value;
+    saveSettings();
+    if (key === "galaxy" && value) galaxyTexture();
+    if (key === "frame" && value !== previous) applyFrame(previous);
+    requestRender();
+  }
+  // Rotate every displayed position into the selected frame.  When the frame
+  // changes while viewing, the view centre, the observer and both viewing
+  // directions are carried over: the line of sight is kept and the image
+  // only turns about the screen centre (screen-up follows the other pole).
+  function applyFrame(previousFrame = displaySettings.frame) {
+    const galactic = displaySettings.frame === "galactic";
+    for (const object of stars) { const p = galactic ? toGalactic(object.icrs) : object.icrs; object.x = p[0]; object.y = p[1]; object.z = p[2]; }
+    for (const object of nebulae) { const p = galactic ? toGalactic(object.icrs) : object.icrs; object.x = p[0]; object.y = p[1]; object.z = p[2]; }
+    if (previousFrame !== displaySettings.frame) {
+      const convert = galactic ? toGalactic : fromGalactic;
+      const angles = v => [Math.atan2(v[1], v[0]), Math.asin(Math.max(-1, Math.min(1, v[2])))];
+      target = convert(target); blendStartTarget = convert(blendStartTarget); observerPos = convert(observerPos);
+      [observeYaw, observePitch] = angles(convert(observeDirection()));
+      observePitch = Math.max(-1.55, Math.min(1.55, observePitch));
+      [yaw, pitch] = angles(convert([Math.cos(pitch) * Math.cos(yaw), Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch)]));
+      pitch = Math.max(-1.42, Math.min(1.42, pitch));
+    }
+    galaxyQuad = galaxyGeometry();
+    ui.frameEyebrow.textContent = galactic ? "GALACTIC · SUN-CENTERED" : "ICRS · SUN-CENTERED";
+    starListKey = "";
+    selectStar(selected);
+  }
+  for (const [name, key] of SETTINGS_RADIOS) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach(input => input.addEventListener("change", () => {
+      if (input.checked) updateSetting(key, input.value);
+    }));
+  }
+  ui.contactLinesSetting.addEventListener("change", () => {
+    updateSetting("contactLines", ui.contactLinesSetting.checked);
+    ui.contactTransparency.disabled = !displaySettings.contactLines;
   });
-  document.querySelector("#crop-sphere-setting").addEventListener("change", event => {
-    displaySettings.cropSphere=event.target.checked; requestRender();
+  ui.contactTransparency.addEventListener("input", () => {
+    updateSetting("contactTransparency", Number(ui.contactTransparency.value));
+    ui.contactTransparencyValue.textContent = `${displaySettings.contactTransparency} %`;
   });
+  ui.solIndicatorSetting.addEventListener("change", () => updateSetting("solIndicator", ui.solIndicatorSetting.checked));
+  ui.cropSphereSetting.addEventListener("change", () => updateSetting("cropSphere", ui.cropSphereSetting.checked));
+  ui.galaxySetting.addEventListener("change", () => updateSetting("galaxy", ui.galaxySetting.checked));
+  ui.settingsDefaults.addEventListener("click", () => {
+    const previousFrame = displaySettings.frame;
+    Object.assign(displaySettings, SETTINGS_DEFAULTS);
+    applySettingsToControls();
+    saveSettings();
+    if (displaySettings.frame !== previousFrame) applyFrame(previousFrame);
+    galaxyTexture();
+    requestRender();
+  });
+  applySettingsToControls();
+  applyFrame();
+  yaw = defaultYaw();
+  if (displaySettings.galaxy) galaxyTexture();
   document.addEventListener("pointerdown", event => {
     if (!event.target.closest(".tool-control")) closeToolPanels();
     if (!event.target.closest("#type-info-popup") && !event.target.closest("#type-info-button")) closeTypeInfo();

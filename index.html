@@ -46,7 +46,7 @@
     </section>
 
     <header id="title-block">
-      <p class="eyebrow">ICRS · SUN-CENTERED</p>
+      <p class="eyebrow" id="frame-eyebrow">GALACTIC · SUN-CENTERED</p>
       <h2>STAR MAP</h2>
       <p id="catalog-summary">Loading catalog…</p>
     </header>
@@ -110,7 +110,12 @@
           <span>Settings</span>
         </button>
         <section id="settings-panel" class="tool-panel glass" hidden>
-          <div class="panel-heading"><span>Display settings</span></div>
+          <div class="panel-heading"><span>Display settings</span><button id="settings-defaults" type="button" title="Restore the default display settings">Defaults</button></div>
+          <fieldset class="two">
+            <legend>Reference frame</legend>
+            <label title="Grid plane = Galactic plane, X toward the Galactic centre"><input type="radio" name="frame" value="galactic" checked><span>Galactic</span></label>
+            <label title="Grid plane = celestial equator, X toward RA 0h"><input type="radio" name="frame" value="equatorial"><span>Equatorial (ICRS)</span></label>
+          </fieldset>
           <fieldset>
             <legend>Grid</legend>
             <label><input type="radio" name="grid-strength" value="off"><span>Off</span></label>
@@ -125,9 +130,8 @@
           </fieldset>
           <fieldset>
             <legend>Contact lines</legend>
-            <label><input type="radio" name="contact-lines" value="off"><span>Off</span></label>
-            <label><input type="radio" name="contact-lines" value="normal" checked><span>Normal</span></label>
-            <label><input type="radio" name="contact-lines" value="prominent"><span>Prominent</span></label>
+            <label><input id="contact-lines-setting" type="checkbox" checked><span>Show lines from the focused object</span></label>
+            <label class="slider-row"><span>Transparency</span><input id="contact-transparency" type="range" min="0" max="100" step="1" value="75" aria-label="Contact line transparency in percent"><output id="contact-transparency-value" for="contact-transparency">75 %</output></label>
           </fieldset>
           <fieldset>
             <legend>Star size</legend>
@@ -142,6 +146,10 @@
           <fieldset>
             <legend>Cropping sphere</legend>
             <label><input id="crop-sphere-setting" type="checkbox" checked><span>Show visibility boundary</span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Galaxy background</legend>
+            <label><input id="galaxy-setting" type="checkbox" checked><span>Show the Milky Way on the Galactic plane</span></label>
           </fieldset>
         </section>
       </div>
@@ -183,6 +191,7 @@
 
   <script src="data/stars.js"></script>
   <script src="data/nebulae.js"></script>
+  <script src="data/galaxy.js"></script>
   <script src="data/star-types.js"></script>
   <script src="app.js"></script>
 </body>

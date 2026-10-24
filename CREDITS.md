@@ -75,3 +75,9 @@ The science team consists of: D. Soderblom and E. Nelan (STScI), F. Benedict and
 
 T.A. Rector (University of Alaska Anchorage/NSF’s NOIRLab), J. Miller (Gemini Observatory/NSF’s NOIRLab), M. Zamani & D. de Martin (NSF’s NOIRLab) · resized to 500×415 px, unmodified otherwise
 - **Iris Nebula** — [Iris Nebula NGC 7023 (noao-ngc7023).jpg](https://commons.wikimedia.org/wiki/File:Iris_Nebula_NGC_7023_(noao-ngc7023).jpg) · CC BY 4.0 ([licence](https://creativecommons.org/licenses/by/4.0)) · Author/credit: T.A. Rector/University of Alaska Anchorage, H. Schweiker/WIYN and NOIRLab/NSF/AURA · resized to 500×459 px, unmodified otherwise
+
+<!-- galaxy-credits:start -->
+## Galaxy background
+
+The Milky Way picture in `data/galaxy.js` and `data/galaxy/` is the Wikimedia Commons file [Artist’s impression of the Milky Way.jpg](https://commons.wikimedia.org/wiki/File:Artist%E2%80%99s_impression_of_the_Milky_Way.jpg) · Public domain · Author/credit: NASA/JPL-Caltech/ESO/R. Hurt · ESO eso1339g (2013 update of NASA/JPL-Caltech/R. Hurt ssc2008-10a) · resized to 3840×3840 px, unmodified otherwise; downloaded by `scripts/build_galaxy.py` on 2026-10-24. Scale, centre and Sun position were measured on the annotated twin [Artist's impression of the Milky Way (updated - annotated).jpg](https://commons.wikimedia.org/wiki/File:Artist%27s_impression_of_the_Milky_Way_(updated_-_annotated).jpg) (same credit and licence).
+<!-- galaxy-credits:end -->

@@ -7,8 +7,9 @@ description: Build/launch/drive recipe to verify StarMap changes end-to-end in h
 
 Static app, no build step. Surface is a browser GUI (WebGL canvas).
 Data tests: `node tests/catalog.test.js` (validates `data/stars.js`,
-`data/nebulae.js`, `data/star-types.js` and `CREDITS.md`) and
-`node tests/pwa.test.js` (manifest, icons, page head, `sw.js` precache list).
+`data/nebulae.js`, `data/galaxy.js`, `data/star-types.js` and `CREDITS.md`) and
+`node tests/pwa.test.js` (manifest, icons, page head, `sw.js` precache list,
+version declaration vs README).
 
 ## Launch
 
@@ -42,8 +43,17 @@ Chromium CLI can't run JS, and Node here (v18) has no WebSocket for CDP.
 Working pattern: serve a same-origin `driver.html` that iframes `/index.html`
 (1600×850) and, on iframe load, pokes its DOM via `contentDocument`:
 
-- Settings: `doc.querySelector('input[name="contact-lines"][value="prominent"]').click()`
-  (radio groups: `grid-strength`, `normal-strength`, `contact-lines`, `star-size`)
+- Settings: radio groups `frame` (galactic, the default, or equatorial),
+  `grid-strength`, `normal-strength`, `star-size`
+  (`doc.querySelector('input[name="grid-strength"][value="prominent"]').click()`);
+  checkboxes `#contact-lines-setting`, `#sol-indicator-setting`,
+  `#crop-sphere-setting`, `#galaxy-setting`; the contact-line transparency is
+  `#contact-transparency` (set `.value`, dispatch `input`); `#settings-defaults`
+  restores defaults. Settings persist in `localStorage["star-map.settings"]`,
+  so clear it (or use a fresh `--user-data-dir`) for a clean run; reload the
+  iframe to test persistence.
+- Zoom in one step: dispatch a single `WheelEvent` with
+  `deltaY = Math.log(target / radius) / 0.0012` (no per-event clamp).
 - Select/center an object: click `#search-button`, set `#star-search .value`,
   dispatch `new win.Event("input", {bubbles:true})`, then click the first
   `.search-result` after a short timeout. Nebulae are searchable too
@@ -127,7 +137,20 @@ Gotchas learned the hard way:
   the i-popup titled "Unclassified object".
 - Search "Rigel", Space, slider to max, drag ~1200 px: Orion-complex sprites
   in the sky (Witch Head, Orion, Flame, Horsehead).
-- Contact lines off/normal/prominent around Sol.
+- Contact lines on/off and transparency 0 % vs 75 % around Sol (60 ly).
+- Galaxy background: wheel out to 30,000 ly; the bulge of the picture sits on
+  the Sgr A* black-hole icon, the grid shows 5,000 ly cells, no corner of the
+  tilted plane is clipped. The texture decodes asynchronously (2.6 MB data
+  URI, resampled to 4096 px); the virtual-time budget covers it. Off via
+  `#galaxy-setting`; invisible at 15 ly (fades in from 100 to 20,000 ly) and
+  in observation mode.
+- Reference frame: in the Galactic frame (default) the galaxy picture lies in
+  the grid plane and Sgr A* reads X ≈ 26,996, Y ≈ −26, Z ≈ −22 ly; switching
+  to equatorial tilts the picture 62.9° against the grid and Sgr A* reads
+  X −1475.53 · Y −23563.26 · Z −13091.13. Stars must not jump on screen when
+  the frame is switched (the camera is converted with the frame).
+- Settings persistence: change the slider and a checkbox, reload the iframe,
+  read the controls and `localStorage["star-map.settings"]` back.
 - All layers off → only Sol, no link, no errors (empty-neighbor path).
 - Phone layouts: 390×844 and 375×667 portrait (compact rules ≤ 720 px wide),
   568×320 and 844×390 landscape (short rules ≤ 520 px high): no panel overlap,

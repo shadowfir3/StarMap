@@ -87,4 +87,24 @@ for (const nebula of nebulae) {
   assert.ok(credits.includes(nebula.image.file), `CREDITS.md lacks ${nebula.image.file}`);
 }
 
-console.log(`Validated ${stars.length} positioned stars and ${nebulae.length} imaged nebulae.`);
+// --- galaxy background -----------------------------------------------------------
+vm.runInNewContext(fs.readFileSync("data/galaxy.js", "utf8"), sandbox);
+const galaxy = sandbox.window.GALAXY_IMAGE;
+assert.ok(galaxy?.dataUri?.startsWith("data:image/jpeg;base64,"), "galaxy: embedded JPEG");
+assert.ok(galaxy.width === galaxy.height && galaxy.width >= 1920 && galaxy.width <= 4096, "galaxy: square picture between 1920 and 4096 px");
+assert.match(galaxy.license, allowedLicense, `galaxy: licence ${galaxy.license} is not PD/CC0/CC BY`);
+assert.ok(galaxy.pageUrl.startsWith("https://commons.wikimedia.org/"), "galaxy: Commons page URL");
+assert.ok((galaxy.author || galaxy.credit).length > 0, "galaxy: attribution missing");
+const calibration = galaxy.calibration;
+assert.equal(calibration.width, galaxy.width, "galaxy: calibration width must match the embedded picture");
+for (const key of ["lyPerPx", "sunDistanceLy", "ringSpacingPx", "ringSpacingLy"]) {
+  assert.ok(Number.isFinite(calibration[key]) && calibration[key] > 0, `galaxy: calibration ${key}`);
+}
+assert.ok(calibration.centerPx.length === 2 && calibration.sunPx.length === 2, "galaxy: centre and Sun pixels");
+const sunPx = Math.hypot(calibration.sunPx[0] - calibration.centerPx[0], calibration.sunPx[1] - calibration.centerPx[1]);
+assert.ok(Math.abs(sunPx * calibration.lyPerPx - calibration.sunDistanceLy) < 2, "galaxy: Sun distance inconsistent with the scale");
+assert.ok(Math.abs(calibration.sunDistanceLy - sgrA.distanceLy) / sgrA.distanceLy < 0.06, "galaxy: painted Sun distance must be within 6 % of the catalog Sgr A* distance");
+assert.equal(calibration.viewpoint, "north Galactic pole");
+assert.ok(credits.includes(galaxy.file), "CREDITS.md lacks the galaxy picture");
+
+console.log(`Validated ${stars.length} positioned stars, ${nebulae.length} imaged nebulae and the ${galaxy.width} px galaxy picture.`);

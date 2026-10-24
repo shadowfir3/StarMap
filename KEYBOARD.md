@@ -6,11 +6,16 @@ mode** (first-person sky view from the focused object). Bindings that differ
 between modes are listed separately. Mouse, keyboard and touch input are all
 active at the same time.
 
+The **reference plane** (Z = 0, the grid) is the Galactic plane in the default
+Galactic frame and the celestial equator in the equatorial frame; the frame is
+chosen in the Settings panel.
+
 ## General rules
 
 - Shortcuts are suspended while a form control (search field, checkbox, radio
-  button, slider) holds keyboard focus. Exception: `Space` on the visibility
-  slider still toggles observation mode.
+  button, the visibility slider, the contact-line transparency slider) holds
+  keyboard focus. Exception: `Space` on the visibility slider still toggles
+  observation mode.
 - `R` and `F` are bound to the typed character and also fire with `Shift`.
   `W`, `A`, `S`, `D`, `Q`, `E` are bound to physical key positions
   (`event.code`); on non-QWERTY layouts the same physical cluster applies.
@@ -24,13 +29,14 @@ active at the same time.
 
 | Key | Action |
 | --- | --- |
-| `W` / `S` | Move the view centre forward / backward along the Z = 0 reference plane, relative to the camera heading. |
+| `W` / `S` | Move the view centre forward / backward along the reference plane, relative to the camera heading. |
 | `A` / `D` | Move the view centre left / right along the reference plane. |
-| `Q` / `E` | Move the view centre down / up (−Z / +Z). |
+| `Q` / `E` | Move the view centre down / up (−Z / +Z), perpendicular to the reference plane. |
 | `Space` | Enter observation mode (ignored on key repeat). |
-| `R` | Reset: Sol at the centre, 15 ly radius, initial isometric rotation, selection cleared, observation direction reset. |
+| `R` | Reset: Sol at the centre, 15 ly radius, the frame's initial rotation (yaw 225° Galactic, 45° equatorial, pitch 35.26°), selection cleared, observation direction reset. Display settings, including the frame, are unaffected. |
 | `F` | Toggle fullscreen for the map viewport. |
 | `Esc` | Close the type information popup. |
+| `←` `→` `↑` `↓` `Home` `End` (transparency slider focused) | Native range-slider steps for the contact-line transparency, 0 to 100 % in steps of 1. |
 
 Movement notes: keys combine for diagonal motion (normalised to unit speed).
 Speed is 0.9 × radius per second, with a floor of 0.8 ly/s.
@@ -45,7 +51,9 @@ Speed is 0.9 × radius per second, with a floor of 0.8 ly/s.
 | `Esc` | Close the type information popup. |
 | `←` `→` `↑` `↓` `Home` `End` (slider focused) | Native range-slider steps for the maximum visibility distance (200 logarithmic steps, 1 to 50,000 ly). |
 
-`W`, `A`, `S`, `D`, `Q`, `E` are inactive in observation mode.
+`W`, `A`, `S`, `D`, `Q`, `E` are inactive in observation mode. The viewing
+direction starts along the frame's X axis: toward the Galactic centre in the
+Galactic frame, toward RA 0h in the equatorial frame.
 
 ## Keys in the search panel
 
@@ -64,8 +72,8 @@ listed.
 | Input | Action |
 | --- | --- |
 | Drag | Rotate the view. Yaw is unlimited; pitch is clamped to ±1.42 rad (≈ ±81°). |
-| `Shift` + drag | Pan the view centre along the Z = 0 reference plane. |
-| Wheel | Scale the visibility radius exponentially between 1 and 50,000 ly. The grid interval follows (1, 5, 10, 50, 100 ly). |
+| `Shift` + drag | Pan the view centre along the reference plane. |
+| Wheel | Scale the visibility radius exponentially between 1 and 50,000 ly. The grid interval follows (1, 5, 10, 50, 100, 500, 1,000, 5,000, 10,000 ly); the galaxy background fades in between 100 and 20,000 ly. |
 | Click (pointer moved ≤ 4 px) | Select the nearest object within 14 px. Sol and stars take precedence; a nebula is hit anywhere within its sprite, up to 70 px from its centre. A click on empty sky clears the selection and shows Sol. |
 | Double-click | Centre the view on the object (it becomes the focused object). The radius is unchanged; a hidden layer containing the object is re-enabled. |
 | Hover | A targeting reticle replaces the pointer over a selectable object. |
@@ -88,9 +96,16 @@ listed.
 | Fullscreen | `F` | Toggle fullscreen. Hidden where the browser lacks the Fullscreen API (iPhone) and when the map runs as an installed app. |
 | Search / Layers / Settings | – | Open one tool panel; opening one closes the others. A click outside closes all. |
 | All (Layers panel) | – | Enable every layer. |
+| Reference frame (Settings panel) | – | Galactic or Equatorial (ICRS). The view centre, the observer and both viewing directions are converted: the line of sight is kept and the image only turns about the screen centre, since screen-up follows the other pole. |
+| Defaults (Settings panel) | – | Restore the default display settings and save them. |
+| Contact-line transparency slider (Settings panel) | arrow keys when focused | Set the transparency of the contact lines from 0 % (opaque) to 100 % (invisible); the value is shown beside the slider and saved immediately. Disabled while the contact-line switch is off. |
 | Nearest stars (below the title) | – | Expand or collapse the list of visible stars ordered by distance from the selected object. A row click selects the star; a double-click centres the view on it. |
 | i (next to the object type) | – | Open the type information popup. |
 | × (popup) | `Esc` | Close the type information popup. |
+
+Every control in the Settings panel writes its value to `localStorage`
+(`star-map.settings`) at once; the next visit of the same browser profile
+restores it.
 
 ## Touch input
 
@@ -113,7 +128,7 @@ Notes:
 - Double-taps are detected from the pointer events, so they do not depend on
   the browser delivering `dblclick` (which iOS does not).
 - The on-screen buttons (Observe, Reset, Search, Layers, Settings) and the
-  visibility slider replace the keyboard. Vertical movement (`Q` / `E`) has no
-  touch equivalent; double-tap an object to centre the view on it instead.
+  sliders replace the keyboard. Vertical movement (`Q` / `E`) has no touch
+  equivalent; double-tap an object to centre the view on it instead.
 - On devices whose primary pointer is coarse, the footer shows touch hints
   instead of mouse and keyboard hints.

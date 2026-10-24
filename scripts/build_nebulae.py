@@ -8,7 +8,8 @@ Standard library only, like build_catalog.py.  Outputs:
   data/nebulae.csv           audit table without image bytes
   data/nebulae/<key>.jpg     the downloaded Wikimedia thumbnails (standard width)
   data/nebulae/sources.json  cached Commons/SIMBAD responses for --offline rebuilds
-  CREDITS.md                 per-image attribution and licence list
+  CREDITS.md                 per-image attribution and licence list (the marked
+                             galaxy section written by build_galaxy.py is preserved)
 
 Only public-domain, CC0 and CC BY images are accepted; the licence is read from
 the Commons extmetadata of each pinned file at build time, never assumed.
@@ -595,6 +596,11 @@ def build(output_dir: Path, image_dir: Path, credits_path: Path, width: int, off
                      "metadata at build time. CC BY images require the credit line below to stay with the image; NASA/ESA/STScI "
                      "public-domain images carry the requested courtesy credit. Images were downsized only.\n\n")
     credits_text += "\n".join(credits) + "\n"
+    # build_galaxy.py owns a marked section at the end of the file; keep it.
+    existing = credits_path.read_text(encoding="utf-8") if credits_path.exists() else ""
+    galaxy_section = re.search(r"<!-- galaxy-credits:start -->.*?<!-- galaxy-credits:end -->\n?", existing, re.S)
+    if galaxy_section:
+        credits_text += "\n" + galaxy_section.group(0)
     credits_path.write_text(credits_text, encoding="utf-8")
     print(json.dumps(metadata, indent=2))
 
